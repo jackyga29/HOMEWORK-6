@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>HW 6 Ray Tracing - Jaqueline Garcia</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            color: #ccc;
+            font-family: monospace;
+            padding: 20px;
+        }
+        textarea {
+            background: #222;
+            color: #0f0;
+            font: 14px monospace;
+            width: 800px;
+            height: 600px;
+        }
+        canvas {
+            border: 1px solid #444;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .canvas-container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .controls {
+            margin-top: 10px;
+            background: #222;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .controls label {
+            display: block;
+            margin: 10px 0;
+        }
+        .controls input[type="range"] {
+            width: 200px;
+        }
+        .controls span {
+            display: inline-block;
+            width: 50px;
+            color: #0f0;
+        }
+    </style>
+</head>
+<body>
+
+<h2>HW 6 Ray Tracing - Jaqueline Garcia</h2>
+<p>Trazado de rayos con reflexión, refracción, sombras y múltiples fuentes de luz.<br>
+Edita los shaders a la derecha para ver cambios en tiempo real.</p>
+
+<div class="container">
+    <div class="canvas-container">
+        <canvas id="glCanvas" width="800" height="600"></canvas>
+        <div class="controls">
+            <h3>Controles Interactivos</h3>
+            <label>
+                Rebotes Máximos: <span id="bouncesValue">4</span>
+                <input type="range" id="maxBounces" min="1" max="8" value="4" step="1">
+            </label>
+            <label>
+                Intensidad Ambiental: <span id="ambientValue">0.15</span>
+                <input type="range" id="ambientStrength" min="0" max="1" value="0.15" step="0.05">
+            </label>
+            <label>
+                Brillo Especular: <span id="shininessValue">64</span>
+                <input type="range" id="shininess" min="8" max="256" value="64" step="8">
+            </label>
+            <label>
+                Intensidad Luz 1: <span id="light1Value">1.0</span>
+                <input type="range" id="light1Intensity" min="0" max="2" value="1.0" step="0.1">
+            </label>
+            <label>
+                Intensidad Luz 2: <span id="light2Value">0.8</span>
+                <input type="range" id="light2Intensity" min="0" max="2" value="0.8" step="0.1">
+            </label>
+        </div>
+    </div>
+    <div class="editor-panel">
+         <div>
+            <b>Fragment Shader</b><br>
+            <textarea id="fsEditor"></textarea>
+        </div>
+        <div>
+            <b>Vertex Shader</b><br>
+            <textarea id="vsEditor"></textarea>
+        </div>
+    </div>
+</div>
+
+
+<script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec2 position;
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+    precision highp float;
+
+    // Uniformes para animación y controles
+    uniform float u_time;
+    uniform vec2 u_resolution;
+    uniform int u_maxBounces;
+    uniform float u_ambientStrength;
+    uniform float u_shininess;
+    uniform float u_light1Intensity;
+    uniform float u_light2Intensity;
+
+    out vec4 fragColor;
+
+    // Tipos de materiales
+    const int MATERIAL_DIFFUSE = 0;
+    const int MATERIAL_REFLECTIVE = 1;
+    const int MATERIAL_REFRACTIVE = 2;
+
+    // Estructura de rayo
+    struct Ray {
+        vec3 origin;
+        vec3 direction;
+    };
+
+    // Estructura de esfera
+    struct Sphere {
+        vec3 center;
+        float radius;
+        vec3 color;
+        int material;
+        float reflectivity;
+        float refractiveIndex;
+    };
+
+    // Estructura de cubo
+    struct Cube {
+        vec3 center;
+        vec3 size;
+        vec3 color;
+        float reflectivity;
+    };
+
+    // Estructura para registrar intersecciones
+    struct HitData {
+        bool hit;
+        float t;
+        vec3 point;
+        vec3 normal;
+        vec3 color;
+        int material;
+        float reflectivity;
+        float refractiveIndex;
+        bool frontFace;
+    };
+
+    // Objetos de la escena
+    Sphere spheres[2];
+    Sphere lightSphere1;
+    Sphere lightSphere2;
+    Cube cube;
+
+    // Inicializar objetos de la escena con animaciones
+    void initScene(float time) {
+        // Primera fuente de luz (amarilla, orbita)
+        lightSphere1 = Sphere(
+            vec3(sin(time * 0.8) * 2.0, 1.5, cos(time * 0.8) * 2.0 - 2.0),
+            0.3,
+            vec3(1.0, 0.9, 0.6) * 5.0,
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
+
+        // Segunda fuente de luz (azul-blanca, orbita en dirección opuesta)
+        lightSphere2 = Sphere(
+            vec3(cos(time * 0.6) * 1.5, 1.0, sin(time * 0.6) * 1.5 - 2.0),
+            0.25,
+            vec3(0.7, 0.8, 1.0) * 4.0,
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
+
+        // Cubo difuso (se mueve arriba y abajo)
+        cube = Cube(
+            vec3(-1.2, sin(time * 1.2) * 0.3 - 0.5, -1.5),
+            vec3(0.6, 0.6, 0.6),
+            vec3(0.8, 0.3, 0.3),
+            0.0
+        );
+
+        // Esfera 1 - Reflectiva como espejo (rota alrededor)
+        spheres[0] = Sphere(
+            vec3(cos(time * 0.5) * 0.8 + 0.5, -0.3, sin(time * 0.5) * 0.5 - 1.2),
+            0.5,
+            vec3(0.9, 0.9, 0.9),
+            MATERIAL_REFLECTIVE,
+            0.95,
+            1.0
+        );
+
+        // Esfera 2 - Refractiva como vidrio (se mueve lado a lado)
+        spheres[1] = Sphere(
+            vec3(sin(time * 0.7) * 0.5, 0.2, -2.0),
+            0.6,
+            vec3(0.95, 0.98, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.52  // Índice de refracción del vidrio
+        );
+    }
+
+    // Intersección rayo-esfera
+    bool intersectSphere(Ray ray, Sphere sphere, out float t) {
+        vec3 oc = ray.origin - sphere.center;
+        float a = dot(ray.direction, ray.direction);
+        float b = 2.0 * dot(oc, ray.direction);
+        float c = dot(oc, oc) - sphere.radius * sphere.radius;
+        float discriminant = b * b - 4.0 * a * c;
+
+        if (discriminant < 0.0) {
+            return false;
+        }
+
+        float sqrtd = sqrt(discriminant);
+        float t0 = (-b - sqrtd) / (2.0 * a);
+        float t1 = (-b + sqrtd) / (2.0 * a);
+
+        // Tomar la intersección más cercana que sea positiva
+        t = t0 > 0.001 ? t0 : t1;
+        return t > 0.001;
+    }
+
+    // Intersección rayo-cubo usando el método de slabs
+    bool intersectCube(Ray ray, out float t, out vec3 normal) {
+        vec3 invDir = 1.0 / ray.direction;
+        vec3 tMin = (cube.center - cube.size * 0.5 - ray.origin) * invDir;
+        vec3 tMax = (cube.center + cube.size * 0.5 - ray.origin) * invDir;
+
+        vec3 t1 = min(tMin, tMax);
+        vec3 t2 = max(tMin, tMax);
+
+        float tNear = max(max(t1.x, t1.y), t1.z);
+        float tFar = min(min(t2.x, t2.y), t2.z);
+
+        if (tNear > tFar || tFar < 0.001) {
+            return false;
+        }
+
+        t = tNear > 0.001 ? tNear : tFar;
+
+        // Calcular la normal basándose en qué cara fue golpeada
+        vec3 hitPoint = ray.origin + ray.direction * t;
+        vec3 localPoint = hitPoint - cube.center;
+        vec3 absPoint = abs(localPoint);
+        float maxDist = max(absPoint.x, max(absPoint.y, absPoint.z));
+
+        normal = vec3(0.0);
+        if (abs(absPoint.x - maxDist) < 0.001) normal = vec3(sign(localPoint.x), 0.0, 0.0);
+        else if (abs(absPoint.y - maxDist) < 0.001) normal = vec3(0.0, sign(localPoint.y), 0.0);
+        else normal = vec3(0.0, 0.0, sign(localPoint.z));
+
+        return true;
+    }
+
+    // Trazar la escena para encontrar intersecciones
+    HitData traceScene(Ray ray, bool includeLightSpheres) {
+        HitData closest;
+        closest.hit = false;
+        closest.t = 1e10;
+
+        // Intersección con primera fuente de luz
+        if (includeLightSpheres) {
+            float t;
+            if (intersectSphere(ray, lightSphere1, t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    closest.normal = normalize(closest.point - lightSphere1.center);
+                    closest.color = lightSphere1.color;
+                    closest.material = lightSphere1.material;
+                    closest.reflectivity = lightSphere1.reflectivity;
+                    closest.refractiveIndex = lightSphere1.refractiveIndex;
+                    closest.frontFace = true;
+                }
+            }
+
+            // Intersección con segunda fuente de luz
+            if (intersectSphere(ray, lightSphere2, t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    closest.normal = normalize(closest.point - lightSphere2.center);
+                    closest.color = lightSphere2.color;
+                    closest.material = lightSphere2.material;
+                    closest.reflectivity = lightSphere2.reflectivity;
+                    closest.refractiveIndex = lightSphere2.refractiveIndex;
+                    closest.frontFace = true;
+                }
+            }
+        }
+
+        // Intersección con el cubo
+        float cube_t;
+        vec3 cubeNormal;
+        if (intersectCube(ray, cube_t, cubeNormal)) {
+            if (cube_t < closest.t) {
+                closest.hit = true;
+                closest.t = cube_t;
+                closest.point = ray.origin + ray.direction * cube_t;
+                closest.normal = cubeNormal;
+                closest.color = cube.color;
+                closest.material = MATERIAL_DIFFUSE;
+                closest.reflectivity = cube.reflectivity;
+                closest.refractiveIndex = 1.0;
+                closest.frontFace = true;
+            }
+        }
+
+        // Intersección con las esferas
+        for (int i = 0; i < 2; i++) {
+            float t;
+            if (intersectSphere(ray, spheres[i], t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    vec3 outwardNormal = normalize(closest.point - spheres[i].center);
+                    closest.frontFace = dot(ray.direction, outwardNormal) < 0.0;
+                    closest.normal = closest.frontFace ? outwardNormal : -outwardNormal;
+                    closest.color = spheres[i].color;
+                    closest.material = spheres[i].material;
+                    closest.reflectivity = spheres[i].reflectivity;
+                    closest.refractiveIndex = spheres[i].refractiveIndex;
+                }
+            }
+        }
+        return closest;
+    }
+
+    // Refracción de Snell
+    vec3 refraction(vec3 I, vec3 N, float eta) {
+        float cosi = -dot(N, I);
+        float cost2 = 1.0 - eta * eta * (1.0 - cosi * cosi);
+
+        if (cost2 < 0.0) {
+            // Reflexión interna total
+            return vec3(0.0);
+        }
+
+        return eta * I + (eta * cosi - sqrt(cost2)) * N;
+    }
+
+    // Aproximación de Schlick para reflectancia de Fresnel
+    float schlick(float cosine, float ref_idx) {
+        float r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
+        r0 = r0 * r0;
+        return r0 + (1.0 - r0) * pow((1.0 - cosine), 5.0);
+    }
+
+    // Función principal de trazado de rayos con recursión iterativa
+    vec3 trace(Ray ray, int maxDepth) {
+        vec3 color = vec3(0.0);
+        vec3 attenuation = vec3(1.0);
+
+        for (int depth = 0; depth < 8; depth++) {
+            if (depth >= maxDepth) break;
+
+            // Verificar si golpeamos una fuente de luz
+            HitData lightHit = traceScene(ray, true);
+            if (lightHit.hit && lightHit.t < 1e9) {
+                // Si golpeamos una luz directamente
+                bool isLight = (length(lightHit.point - lightSphere1.center) < lightSphere1.radius + 0.01) ||
+                               (length(lightHit.point - lightSphere2.center) < lightSphere2.radius + 0.01);
+                if (isLight) {
+                    color += attenuation * lightHit.color;
+                    break;
+                }
+            }
+
+            HitData hit = traceScene(ray, false);
+
+            if (!hit.hit) {
+                // Fondo degradado
+                float t = 0.5 * (ray.direction.y + 1.0);
+                color += attenuation * mix(vec3(0.1, 0.1, 0.15), vec3(0.5, 0.7, 1.0) * 0.3, t);
+                break;
+            }
+
+            // Calcular iluminación de múltiples fuentes de luz
+            vec3 totalDirectLight = vec3(0.0);
+
+            // Luz 1
+            vec3 lightDir1 = normalize(lightSphere1.center - hit.point);
+            float lightDist1 = length(lightSphere1.center - hit.point);
+
+            // Verificar sombra para luz 1
+            Ray shadowRay1 = Ray(hit.point + hit.normal * 0.001, lightDir1);
+            HitData shadowHit1 = traceScene(shadowRay1, false);
+            bool inShadow1 = shadowHit1.hit && shadowHit1.t < lightDist1;
+
+            // Luz 2
+            vec3 lightDir2 = normalize(lightSphere2.center - hit.point);
+            float lightDist2 = length(lightSphere2.center - hit.point);
+
+            // Verificar sombra para luz 2
+            Ray shadowRay2 = Ray(hit.point + hit.normal * 0.001, lightDir2);
+            HitData shadowHit2 = traceScene(shadowRay2, false);
+            bool inShadow2 = shadowHit2.hit && shadowHit2.t < lightDist2;
+
+            // Material difuso (usa modelo de Phong)
+            if (hit.material == MATERIAL_DIFFUSE) {
+                vec3 ambientLight = u_ambientStrength * hit.color;
+
+                // Contribución de luz 1
+                if (!inShadow1) {
+                    float diff1 = max(dot(hit.normal, lightDir1), 0.0);
+                    vec3 viewDir = normalize(-ray.direction);
+                    vec3 reflectDir1 = reflect(-lightDir1, hit.normal);
+                    float spec1 = pow(max(dot(viewDir, reflectDir1), 0.0), u_shininess);
+                    float attenFactor1 = 1.0 / (1.0 + 0.1 * lightDist1 + 0.01 * lightDist1 * lightDist1);
+                    totalDirectLight += (diff1 * hit.color + spec1 * vec3(1.0)) *
+                                       lightSphere1.color * 0.2 * attenFactor1 * u_light1Intensity;
+                }
+
+                // Contribución de luz 2
+                if (!inShadow2) {
+                    float diff2 = max(dot(hit.normal, lightDir2), 0.0);
+                    vec3 viewDir = normalize(-ray.direction);
+                    vec3 reflectDir2 = reflect(-lightDir2, hit.normal);
+                    float spec2 = pow(max(dot(viewDir, reflectDir2), 0.0), u_shininess);
+                    float attenFactor2 = 1.0 / (1.0 + 0.1 * lightDist2 + 0.01 * lightDist2 * lightDist2);
+                    totalDirectLight += (diff2 * hit.color + spec2 * vec3(1.0)) *
+                                       lightSphere2.color * 0.2 * attenFactor2 * u_light2Intensity;
+                }
+
+                vec3 lighting = totalDirectLight + ambientLight;
+                color += attenuation * lighting;
+                break;
+
+            } else if (hit.material == MATERIAL_REFRACTIVE) {
+                // Material refractivo (vidrio)
+                float eta = hit.frontFace ? (1.0 / hit.refractiveIndex) : hit.refractiveIndex;
+                float cosTheta = min(dot(-ray.direction, hit.normal), 1.0);
+                float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+                bool totalInternalReflection = eta * sinTheta > 1.0;
+                float schlickValue = schlick(cosTheta, eta);
+
+                vec3 direction;
+                if (totalInternalReflection || schlickValue > 0.5) {
+                    // Reflexión
+                    direction = reflect(ray.direction, hit.normal);
+                } else {
+                    // Refracción
+                    direction = refraction(ray.direction, hit.normal, eta);
+                    if (length(direction) < 0.01) {
+                        direction = reflect(ray.direction, hit.normal);
+                    }
+                }
+
+                ray = Ray(hit.point + direction * 0.001, direction);
+                attenuation *= hit.color;
+
+            } else {
+                // Material reflectivo (espejo)
+                // Agregar algo de iluminación especular directa
+                if (!inShadow1) {
+                    vec3 reflectDir1 = reflect(-lightDir1, hit.normal);
+                    float spec1 = pow(max(dot(-ray.direction, reflectDir1), 0.0), 128.0);
+                    totalDirectLight += spec1 * lightSphere1.color * 0.1 * u_light1Intensity;
+                }
+                if (!inShadow2) {
+                    vec3 reflectDir2 = reflect(-lightDir2, hit.normal);
+                    float spec2 = pow(max(dot(-ray.direction, reflectDir2), 0.0), 128.0);
+                    totalDirectLight += spec2 * lightSphere2.color * 0.1 * u_light2Intensity;
+                }
+
+                color += attenuation * totalDirectLight;
+                attenuation *= hit.reflectivity;
+                ray = Ray(hit.point + hit.normal * 0.001, reflect(ray.direction, hit.normal));
+            }
+
+            // Terminar si la atenuación es muy baja
+            if (length(attenuation) < 0.01) break;
+        }
+
+        return color;
+    }
+
+    void main() {
+        initScene(u_time);
+
+        // Coordenadas UV centradas
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
+
+        // Configurar la cámara
+        vec3 origin = vec3(0.0, 0.0, 2.0);
+        vec3 direction = normalize(vec3(uv, -1.5));
+
+        // Crear y trazar el rayo
+        Ray ray = Ray(origin, direction);
+        vec3 color = trace(ray, u_maxBounces);
+
+        // Corrección gamma
+        color = pow(color, vec3(1.0 / 2.2));
+
+        fragColor = vec4(color, 1.0);
+    }
+</script>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        if (!gl) {
+            alert('WebGL 2 no está soportado en este navegador');
+            throw new Error('WebGL 2 no está soportado');
+        }
+
+        const vsEditor = document.getElementById('vsEditor');
+        const fsEditor = document.getElementById('fsEditor');
+
+        const vertexShaderSource = document.getElementById('vertex-shader').textContent;
+        const fragmentShaderSource = document.getElementById('fragment-shader').textContent;
+
+        // Inicializar editores con el código de los shaders
+        vsEditor.value = vertexShaderSource;
+        fsEditor.value = fragmentShaderSource;
+
+        let program, positionLocation, resolutionLocation, timeLocation;
+        let maxBouncesLocation, ambientStrengthLocation, shininessLocation;
+        let light1IntensityLocation, light2IntensityLocation;
+        let vao, positionBuffer;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                throw new Error(gl.getShaderInfoLog(shader));
+            }
+
+            return shader;
+        }
+
+        function createProgram(gl, vsSource, fsSource) {
+            const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+            const prog = gl.createProgram();
+            gl.attachShader(prog, vs);
+            gl.attachShader(prog, fs);
+            gl.linkProgram(prog);
+
+            if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+                throw new Error(gl.getProgramInfoLog(prog));
+            }
+
+            return prog;
+        }
+
+        const positions = new Float32Array([
+            -1, -1,
+            1, -1,
+            -1, 1,
+            1, 1
+        ]);
+
+        // Inicializar buffers
+        function initBuffers() {
+            positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+            vao = gl.createVertexArray();
+            gl.bindVertexArray(vao);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+            gl.bindVertexArray(null);
+        }
+
+        function initShaderProgram() {
+            try {
+                program = createProgram(gl, vsEditor.value, fsEditor.value);
+                gl.useProgram(program);
+                positionLocation = gl.getAttribLocation(program, 'position');
+                resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+                timeLocation = gl.getUniformLocation(program, 'u_time');
+                maxBouncesLocation = gl.getUniformLocation(program, 'u_maxBounces');
+                ambientStrengthLocation = gl.getUniformLocation(program, 'u_ambientStrength');
+                shininessLocation = gl.getUniformLocation(program, 'u_shininess');
+                light1IntensityLocation = gl.getUniformLocation(program, 'u_light1Intensity');
+                light2IntensityLocation = gl.getUniformLocation(program, 'u_light2Intensity');
+
+                initBuffers();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        initShaderProgram();
+
+        // Recompilar cuando se editen los shaders
+        vsEditor.onkeyup = initShaderProgram;
+        fsEditor.onkeyup = initShaderProgram;
+
+        // Variables de control
+        let maxBounces = 4;
+        let ambientStrength = 0.15;
+        let shininess = 64.0;
+        let light1Intensity = 1.0;
+        let light2Intensity = 0.8;
+
+        // Controles de UI
+        const maxBouncesSlider = document.getElementById('maxBounces');
+        const bouncesValue = document.getElementById('bouncesValue');
+        maxBouncesSlider.addEventListener('input', function() {
+            maxBounces = parseInt(this.value);
+            bouncesValue.textContent = maxBounces;
+        });
+
+        const ambientStrengthSlider = document.getElementById('ambientStrength');
+        const ambientValue = document.getElementById('ambientValue');
+        ambientStrengthSlider.addEventListener('input', function() {
+            ambientStrength = parseFloat(this.value);
+            ambientValue.textContent = ambientStrength.toFixed(2);
+        });
+
+        const shininessSlider = document.getElementById('shininess');
+        const shininessValue = document.getElementById('shininessValue');
+        shininessSlider.addEventListener('input', function() {
+            shininess = parseFloat(this.value);
+            shininessValue.textContent = shininess;
+        });
+
+        const light1Slider = document.getElementById('light1Intensity');
+        const light1Value = document.getElementById('light1Value');
+        light1Slider.addEventListener('input', function() {
+            light1Intensity = parseFloat(this.value);
+            light1Value.textContent = light1Intensity.toFixed(1);
+        });
+
+        const light2Slider = document.getElementById('light2Intensity');
+        const light2Value = document.getElementById('light2Value');
+        light2Slider.addEventListener('input', function() {
+            light2Intensity = parseFloat(this.value);
+            light2Value.textContent = light2Intensity.toFixed(1);
+        });
+
+        let startTime = Date.now();
+        function render() {
+            const time = (Date.now() - startTime) / 1000.0;
+
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+            gl.bindVertexArray(vao);
+
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            gl.uniform1f(timeLocation, time);
+            gl.uniform1i(maxBouncesLocation, maxBounces);
+            gl.uniform1f(ambientStrengthLocation, ambientStrength);
+            gl.uniform1f(shininessLocation, shininess);
+            gl.uniform1f(light1IntensityLocation, light1Intensity);
+            gl.uniform1f(light2IntensityLocation, light2Intensity);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    })();
+</script>
+
+</body>
+</html>
