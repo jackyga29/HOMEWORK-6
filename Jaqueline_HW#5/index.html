@@ -1,0 +1,700 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>HW#5 - Texture Implementation </title>
+  <style>
+    body { background:#0e1013; color:#e8eef2; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .row { display:flex; gap:16px; align-items:flex-start; }
+    .panel { background:#14171b; border:1px solid #2a2f36; border-radius:10px; padding:12px; }
+    .panel h3 { margin:0 0 8px 0; font-size:16px; color:#fff; }
+    label { font-size:12px; color:#b9c2cc; display:block; margin-top:6px; }
+    button, select, input[type="color"], input[type="range"], input[type="checkbox"] { background:#1a1f25; color:#e8eef2; border:1px solid #39424d; border-radius:8px; padding:6px 8px; }
+    button:hover { background:#232a32; cursor:pointer; }
+    canvas { border:1px solid #39424d; border-radius:10px; }
+    small { color:#9aa6b2; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+  </style>
+</head>
+<body>
+  <h2>HW3</h2>
+  <p>
+    Drag with the mouse to rotate. Arrows and W/S move the camera.
+    Use the controls to add penguins, change color, and animate them. 
+  </p>
+
+  <div class="row">
+    <div class="panel" style="min-width:300px;">
+      <h3>Controls</h3>
+      <div class="grid2">
+        <button id="btnAdd">+ Add Penguin </button>
+        <button id="btnRemove">– Remove Penguin </button>
+      </div>
+      <label>
+        Select
+        <select id="selActor"></select>
+      </label>
+      <label>
+        Bodie's Color 
+        <input id="colorBody" type="color" value= "#1371d1" />
+      </label>
+      <label>
+        Color of Details (chest/beak/legs)
+        <input id="colorAccent" type="color" value="#f59e0b" />
+      </label>
+      <div class="grid2" style="margin-top:8px; align-items:center;">
+        <label><input id="toggleWaddle" type="checkbox" checked /> Animate Steps</label>
+        <label><input id="toggleFlap" type="checkbox" checked /> Animate penguin's flapping </label>
+      </div>
+      <label>
+        Animation Velocity  
+        <input id="speed" type="range" min="0" max="2" value="1" step="0.01" />
+      </label>
+      <label>
+        Spin Base   (°)
+        <input id="baseAngle" type="range" min="-180" max="180" value="0" />
+      </label>
+      <label>
+        Head (yaw °)
+        <input id="headYaw" type="range" min="-60" max="60" value="0" />
+      </label>
+      <label>
+        Head (pitch °)
+        <input id="headPitch" type="range" min="-30" max="30" value="0" />
+      </label>
+      <label>
+        Flapping (amplitude °)
+        <input id="flapAmp" type="range" min="0" max="45" value="5" />
+      </label>
+    </div>
+    <div class="panel">
+      <canvas id="glcanvas" width="760" height="520"></canvas>
+    </div>
+    <div>
+    <h3>Lighting (Phong)</h3>
+    <label>Ambient (ka): 
+      <input id="ka" type="range" min="0" max="1" step="0.01" value="0.25">
+    </label>
+
+    <label>Diffuse (kd): 
+      <input id="kd" type="range" min="0" max="1" step="0.01" value="0.80">
+    </label>
+    <label>Specular (ks):
+      <input id="ks" type="range" min="0" max="1" step="0.01" value="0.40">
+    </label>
+    <label>Shininess: 
+      <input id="shininess" type="range" min="1" max="256" step="1" value="64">
+    </label>
+    </div>
+
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px;align-items:center;margin-top:8px;">
+      <span>Ambient color:</span>  <input id="ambColor"  type="color" value="#3b2a17">
+      <span>Diffuse color:</span>  <input id="difColor"  type="color" value="#c77721">
+      <span>Specular color:</span> <input id="speColor"  type="color" value="#ffffff">
+      <span>Background:</span>     <input id="bgColor"   type="color" value="#0b1f4b">
+    </div>
+    
+    <div>
+      <h4 style="margin-top:10px;">Light position (world)</h4>
+      <label>X: <input id="lx" type="range" min="-10" max="10" step="0.1" value="0.7"></label>
+      <label>Y: <input id="ly" type="range" min="-10" max="10" step="0.1" value="2.6"></label>
+      <label>Z: <input id="lz" type="range" min="-10" max="10" step="0.1" value="3.4"></label>
+    </div>
+  </div>
+
+<!-- ================= Primary Shaders (Phong color) ================= -->
+  <script id="vs" type="x-shader/x-vertex">#version 300 es
+  in vec3 aPosition;
+  in vec3 aNormal;
+  in vec3 aColor;
+  uniform mat4 uProjectionMatrix;
+  uniform mat4 uModelViewMatrix;
+  uniform mat4 uModelMatrix;
+  uniform mat3 uNormalMatrix;
+  out vec3 vColor;
+  out vec3 vNormal;
+  out vec3 vPosView;
+  void main(){
+    vec4 posWorld = uModelMatrix * vec4(aPosition, 1.0);
+    vec4 posView  = uModelViewMatrix * posWorld;
+    gl_Position   = uProjectionMatrix * posView;
+    vPosView = posView.xyz;
+    vNormal  = normalize(uNormalMatrix * aNormal);
+    vColor   = aColor;
+  }
+  </script>
+
+  <script id="fs" type="x-shader/x-fragment">#version 300 es
+  precision mediump float;
+  in vec3 vColor;
+  in vec3 vNormal;
+  in vec3 vPosView;
+  out vec4 fragColor;
+  uniform vec3 uLightPosView;
+  uniform vec3 uViewPosView;
+  uniform float uKa, uKd, uKs, uShininess;
+  uniform vec3 uAmbientColor, uDiffuseColor, uSpecularColor;
+  void main(){
+    vec3 N = normalize(vNormal);
+    vec3 L = normalize(uLightPosView - vPosView);
+    vec3 V = normalize(uViewPosView  - vPosView);
+    vec3 R = reflect(-L, N);
+    vec3 ambient = uKa * (uAmbientColor * vColor);
+    float NdotL  = max(dot(N, L), 0.0);
+    vec3 diffuse = uKd * NdotL * (uDiffuseColor * vColor);
+    float spec   = (NdotL > 0.0) ? pow(max(dot(R,V),0.0), uShininess) : 0.0;
+    vec3 specular= uKs * spec * uSpecularColor;
+    fragColor = vec4(ambient + diffuse + specular, 1.0);
+  }
+  </script>
+
+  <!-- ================= Background (billboard) ================= -->
+  <script id="vs_bg" type="x-shader/x-vertex">#version 300 es
+  in vec2 aPos; in vec2 aUV; out vec2 vUV;
+  void main(){ vUV = aUV; gl_Position = vec4(aPos, 0.0, 1.0); }
+  </script>
+  <script id="fs_bg" type="x-shader/x-fragment">#version 300 es
+  precision mediump float;
+  in vec2 vUV; uniform sampler2D uTex; out vec4 fragColor;
+  void main(){ fragColor = texture(uTex, vUV); }
+  </script>
+
+  <!-- ================= Textured objects (floor + normal map) ================= -->
+  <script id="vs_tex" type="x-shader/x-vertex">#version 300 es
+  in vec3 aPosition; in vec3 aNormal; in vec2 aTexCoord;
+  uniform mat4 uProjectionMatrix, uModelViewMatrix, uModelMatrix;
+  uniform mat3 uNormalMatrix;
+  out vec3 vPosView; out vec3 vNormal; out vec2 vUV;
+  void main(){
+    vec4 posWorld = uModelMatrix * vec4(aPosition,1.0);
+    vec4 posView  = uModelViewMatrix * posWorld;
+    gl_Position   = uProjectionMatrix * posView;
+    vPosView = posView.xyz;
+    vNormal  = normalize(uNormalMatrix * aNormal);
+    vUV      = aTexCoord;
+  }
+  </script>
+  <script id="fs_tex" type="x-shader/x-fragment">#version 300 es
+  precision mediump float;
+  in vec3 vPosView; in vec3 vNormal; in vec2 vUV; out vec4 fragColor;
+  uniform sampler2D uBaseTex; uniform sampler2D uNormalMap;
+  uniform bool  uUseNormalMap; uniform float uUVScale;
+  uniform vec3  uLightPosView, uViewPosView;
+  uniform float uKa, uKd, uKs, uShininess;
+  uniform vec3  uAmbientColor, uDiffuseColor, uSpecularColor;
+  void main(){
+    vec3 N = normalize(vNormal);
+    vec2 uv = vUV * uUVScale;
+    if(uUseNormalMap){
+      vec3 nm = texture(uNormalMap, uv).xyz * 2.0 - 1.0;
+      vec3 T = normalize(vec3(1.0, 0.0, 0.0));
+      vec3 B = normalize(vec3(0.0, 0.0, 1.0));
+      mat3 TBN = mat3(T, B, N);
+      N = normalize(TBN * nm);
+    }
+    vec3 L = normalize(uLightPosView - vPosView);
+    vec3 V = normalize(uViewPosView  - vPosView);
+    vec3 R = reflect(-L, N);
+    vec3 base = texture(uBaseTex, uv).rgb;
+    vec3 ambient  = uKa * (uAmbientColor * base);
+    float NdotL   = max(dot(N,L),0.0);
+    vec3 diffuse  = uKd * NdotL * (uDiffuseColor * base);
+    float spec    = (NdotL>0.0) ? pow(max(dot(R,V),0.0), uShininess) : 0.0;
+    vec3 specular = uKs * spec * uSpecularColor;
+    fragColor = vec4(ambient + diffuse + specular, 1.0);
+  }
+  </script>
+
+  <!-- ====== Reuse your transformations ====== -->
+  <script src="transformations.js"></script>
+
+  <script>
+  // ----------------- Small helpers -----------------
+// ==== Mat4 helpers (polyfills) si faltan en transformations.js ====
+if (typeof mat4Scale !== 'function') {
+  function mat4Scale(m, s){ // s = [sx, sy, sz]
+    const r = new Float32Array(m);
+    r[0]*=s[0]; r[1]*=s[0]; r[2]*=s[0]; r[3]*=s[0];
+    r[4]*=s[1]; r[5]*=s[1]; r[6]*=s[1]; r[7]*=s[1];
+    r[8]*=s[2]; r[9]*=s[2]; r[10]*=s[2]; r[11]*=s[2];
+    return r;
+  }
+}
+
+if (typeof mat4RotateZ !== 'function') {
+  // Rotación POSmultiplicada sobre Z (column-major), consistente con mat4RotateX/Y típicos
+  function mat4RotateZ(m, a){
+    const c = Math.cos(a), s = Math.sin(a);
+    const r = new Float32Array(m);
+    // Guardamos columnas 0 y 1 originales
+    const m0=m[0], m4=m[4], m8=m[8],  m12=m[12];
+    const m1=m[1], m5=m[5], m9=m[9],  m13=m[13];
+    // nueva col0 = c*col0 + s*col1
+    r[0] =  c*m0 + s*m1;
+    r[4] =  c*m4 + s*m5;
+    r[8] =  c*m8 + s*m9;
+    r[12]=  c*m12 + s*m13;
+    // nueva col1 = c*col1 - s*col0
+    r[1] =  c*m1 - s*m0;
+    r[5] =  c*m5 - s*m4;
+    r[9] =  c*m9 - s*m8;
+    r[13]=  c*m13 - s*m12;
+    return r;
+  }
+}
+
+  function hexToRGB3(h){ return [
+    parseInt(h.slice(1,3),16)/255,
+    parseInt(h.slice(3,5),16)/255,
+    parseInt(h.slice(5,7),16)/255
+  ];}
+
+  function compileShader(gl, type, src){
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+      throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  }
+  function createProgramFromDOM(gl, vsId, fsId){
+    const vs = compileShader(gl, gl.VERTEX_SHADER,   document.getElementById(vsId).textContent);
+    const fs = compileShader(gl, gl.FRAGMENT_SHADER, document.getElementById(fsId).textContent);
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      throw new Error(gl.getProgramInfoLog(prog));
+    return prog;
+  }
+  function loadTexture(gl, url, {wrap='REPEAT', mipmaps=true}={}){
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipmaps? gl.LINEAR_MIPMAP_LINEAR: gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    const wrapConst = (wrap==='REPEAT') ? gl.REPEAT : gl.CLAMP_TO_EDGE;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrapConst);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrapConst);
+    // placeholder pixel (mientras carga o si falta el archivo)
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([180,200,255,255]));
+    const img = new Image(); img.src = url; img.onload = ()=>{
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+      if(mipmaps) gl.generateMipmap(gl.TEXTURE_2D);
+    };
+    return tex;
+  }
+
+  // ----------------- GL + UI setup -----------------
+  const canvas = document.getElementById('glcanvas');
+  const gl = canvas.getContext('webgl2');
+  if(!gl) { alert('WebGL2 no soportado'); throw new Error('No WebGL2'); }
+  gl.enable(gl.DEPTH_TEST);
+
+  const bgColor  = document.getElementById('bgColor');
+  function updateBG(){
+    const c = hexToRGB3(bgColor.value);
+    gl.clearColor(c[0], c[1], c[2], 1);
+  }
+  bgColor.oninput = updateBG; updateBG();
+
+  // Camera
+  let cam = { x:0, y:0, z:-12, rotX:0, rotY:0 };
+  let dragging=false, mx=0, my=0;
+  canvas.addEventListener('mousedown', e=>{dragging=true; mx=e.clientX; my=e.clientY;});
+  canvas.addEventListener('mouseup', ()=>dragging=false);
+  canvas.addEventListener('mousemove', e=>{
+    if(!dragging) return;
+    const dx=e.clientX-mx, dy=e.clientY-my; mx=e.clientX; my=e.clientY;
+    cam.rotY += dx*0.01; cam.rotX += dy*0.01;
+  });
+  document.addEventListener('keydown', e=>{
+    const s=0.35;
+    if(e.key==='ArrowUp')    cam.y -= s;
+    if(e.key==='ArrowDown')  cam.y += s;
+    if(e.key==='ArrowLeft')  cam.x += s;
+    if(e.key==='ArrowRight') cam.x -= s;
+    if(e.key==='w')          cam.z += s;
+    if(e.key==='s')          cam.z -= s;
+  });
+
+  const proj = perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 100);
+  function buildView(){
+    let M = mat4Identity();
+    M = mat4Translate(M,[cam.x, cam.y, cam.z]);
+    M = mat4RotateX(M, cam.rotX);
+    M = mat4RotateY(M, cam.rotY);
+    return M;
+  }
+
+  // ----------------- Primary program (Phong color) -----------------
+  const program = createProgramFromDOM(gl,'vs','fs');
+  gl.useProgram(program);
+  const aPosition = gl.getAttribLocation(program,'aPosition');
+  const aNormal   = gl.getAttribLocation(program,'aNormal');
+  const aColor    = gl.getAttribLocation(program,'aColor');
+  const uPM       = gl.getUniformLocation(program,'uProjectionMatrix');
+  const uMVM      = gl.getUniformLocation(program,'uModelViewMatrix');
+  const uMM       = gl.getUniformLocation(program,'uModelMatrix');
+  const uNM       = gl.getUniformLocation(program,'uNormalMatrix');
+  const uLightPosView = gl.getUniformLocation(program,'uLightPosView');
+  const uViewPosView  = gl.getUniformLocation(program,'uViewPosView');
+  const uKa = gl.getUniformLocation(program,'uKa');
+  const uKd = gl.getUniformLocation(program,'uKd');
+  const uKs = gl.getUniformLocation(program,'uKs');
+  const uShininess = gl.getUniformLocation(program,'uShininess');
+  const uAmbientColor = gl.getUniformLocation(program,'uAmbientColor');
+  const uDiffuseColor = gl.getUniformLocation(program,'uDiffuseColor');
+  const uSpecularColor= gl.getUniformLocation(program,'uSpecularColor');
+
+  // ----------------- Background (billboard) -----------------
+  let bg = {};
+  function armAutoplay(vid){
+    const start=()=>{ vid.play().catch(()=>{}); window.removeEventListener('pointerdown',start); window.removeEventListener('keydown',start); window.removeEventListener('touchstart',start); };
+    window.addEventListener('pointerdown',start); window.addEventListener('keydown',start); window.addEventListener('touchstart',start);
+  }
+  function initBillboard(src){
+    bg.prog = createProgramFromDOM(gl,'vs_bg','fs_bg');
+    bg.aPos = gl.getAttribLocation(bg.prog,'aPos');
+    bg.aUV  = gl.getAttribLocation(bg.prog,'aUV');
+    bg.uTex = gl.getUniformLocation(bg.prog,'uTex');
+    const verts=new Float32Array([ -1,-1, 0,0,   1,-1, 1,0,   1,1, 1,1,  -1,1, 0,1 ]);
+    const idx  =new Uint16Array([0,1,2, 0,2,3]);
+    bg.vbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,bg.vbo); gl.bufferData(gl.ARRAY_BUFFER,verts,gl.STATIC_DRAW);
+    bg.ibo=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bg.ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+    bg.tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,bg.tex);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    const vid=document.createElement('video');
+    vid.src=src; vid.loop=true; vid.muted=true; vid.playsInline=true; bg.media=vid;
+    armAutoplay(vid);
+    vid.addEventListener('canplay', ()=>{ updateBillboardTexture(); });
+    vid.addEventListener('loadeddata', ()=>{ updateBillboardTexture(); });
+  }
+  function updateBillboardTexture(){
+    if(!bg.media) return;
+    const m=bg.media; if(m.readyState!==undefined && m.readyState<2) return;
+    gl.bindTexture(gl.TEXTURE_2D,bg.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+    try{ gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,m); }catch(e){}
+  }
+  function drawBillboard(){
+    if(!bg.prog || !bg.media) return;
+    updateBillboardTexture();
+    gl.useProgram(bg.prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER,bg.vbo);
+    gl.enableVertexAttribArray(bg.aPos); gl.vertexAttribPointer(bg.aPos,2,gl.FLOAT,false,16,0);
+    gl.enableVertexAttribArray(bg.aUV ); gl.vertexAttribPointer(bg.aUV ,2,gl.FLOAT,false,16,8);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,bg.ibo);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,bg.tex);
+    gl.uniform1i(bg.uTex,0);
+    const wasDepth = gl.isEnabled(gl.DEPTH_TEST);
+    gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+    gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0);
+    gl.depthMask(true); if(wasDepth) gl.enable(gl.DEPTH_TEST);
+  }
+  console.log('[bg] init call');
+  initBillboard('assets/snow.mp4');
+
+  // ----------------- Textured floor (programTex) -----------------
+  const programTex = createProgramFromDOM(gl,'vs_tex','fs_tex');
+  const aPosT  = gl.getAttribLocation(programTex,'aPosition');
+  const aNormT = gl.getAttribLocation(programTex,'aNormal');
+  const aUVT   = gl.getAttribLocation(programTex,'aTexCoord');
+  const uPM_T   = gl.getUniformLocation(programTex,'uProjectionMatrix');
+  const uMVM_T  = gl.getUniformLocation(programTex,'uModelViewMatrix');
+  const uMM_T   = gl.getUniformLocation(programTex,'uModelMatrix');
+  const uNM_T   = gl.getUniformLocation(programTex,'uNormalMatrix');
+  const uBaseTex_T   = gl.getUniformLocation(programTex,'uBaseTex');
+  const uNormalMap_T = gl.getUniformLocation(programTex,'uNormalMap');
+  const uUseNormal_T = gl.getUniformLocation(programTex,'uUseNormalMap');
+  const uUVScale_T   = gl.getUniformLocation(programTex,'uUVScale');
+  const uKa_T = gl.getUniformLocation(programTex,'uKa');
+  const uKd_T = gl.getUniformLocation(programTex,'uKd');
+  const uKs_T = gl.getUniformLocation(programTex,'uKs');
+  const uSh_T = gl.getUniformLocation(programTex,'uShininess');
+  const uAmb_T= gl.getUniformLocation(programTex,'uAmbientColor');
+  const uDif_T= gl.getUniformLocation(programTex,'uDiffuseColor');
+  const uSpe_T= gl.getUniformLocation(programTex,'uSpecularColor');
+  const uLPos_T=gl.getUniformLocation(programTex,'uLightPosView');
+  const uVPos_T=gl.getUniformLocation(programTex,'uViewPosView');
+
+  function makePlaneXZ(size=60){
+    const s=size*0.5;
+    const pos=new Float32Array([ -s,0,-s,  s,0,-s,  s,0,s,  -s,0,s ]);
+    const nor=new Float32Array([  0,1,0,   0,1,0,   0,1,0,   0,1,0 ]);
+    const uvs=new Float32Array([  0,0,     1,0,     1,1,     0,1 ]);
+    const idx=new Uint16Array([0,1,2, 0,2,3]);
+    return {positions:pos, normals:nor, uvs:uvs, indices:idx};
+  }
+  const floorGeo = makePlaneXZ(60);
+  const floor = {
+    vbo: gl.createBuffer(), nbo: gl.createBuffer(), tbo: gl.createBuffer(),
+    ibo: gl.createBuffer(), count: floorGeo.indices.length
+  };
+  gl.bindBuffer(gl.ARRAY_BUFFER,floor.vbo); gl.bufferData(gl.ARRAY_BUFFER,floorGeo.positions,gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,floor.nbo); gl.bufferData(gl.ARRAY_BUFFER,floorGeo.normals,  gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER,floor.tbo); gl.bufferData(gl.ARRAY_BUFFER,floorGeo.uvs,      gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,floor.ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,floorGeo.indices,gl.STATIC_DRAW);
+
+  const texIce   = loadTexture(gl,'assets/Ice_Base.png',   {wrap:'REPEAT', mipmaps:true});
+  const texIceNM = loadTexture(gl,'assets/ice_normal.png', {wrap:'REPEAT', mipmaps:true});
+
+  // ----------------- Mesh/Node/Penguin (simplificado) -----------------
+  function ensurePerVertexColors(positions, colors){
+    const n=positions.length/3;
+    if(colors && colors.length===n*3) return colors;
+    let base=[1,1,1];
+    if(colors && colors.length===3) base=[colors[0],colors[1],colors[2]];
+    const out=new Float32Array(n*3);
+    for(let i=0;i<n;i++){ out[i*3]=base[0]; out[i*3+1]=base[1]; out[i*3+2]=base[2]; }
+    return out;
+  }
+  function computeFlatNormals(positions, indices){
+    const n=positions.length/3, normals=new Float32Array(n*3);
+    for(let i=0;i<indices.length;i+=3){
+      const ia=indices[i]*3, ib=indices[i+1]*3, ic=indices[i+2]*3;
+      const ax=positions[ia], ay=positions[ia+1], az=positions[ia+2];
+      const bx=positions[ib], by=positions[ib+1], bz=positions[ib+2];
+      const cx=positions[ic], cy=positions[ic+1], cz=positions[ic+2];
+      const e1x=bx-ax, e1y=by-ay, e1z=bz-az;
+      const e2x=cx-ax, e2y=cy-ay, e2z=cz-az;
+      const nx=e1y*e2z - e1z*e2y, ny=e1z*e2x - e1x*e2z, nz=e1x*e2y - e1y*e2x;
+      normals[ia]+=nx; normals[ia+1]+=ny; normals[ia+2]+=nz;
+      normals[ib]+=nx; normals[ib+1]+=ny; normals[ib+2]+=nz;
+      normals[ic]+=nx; normals[ic+1]+=ny; normals[ic+2]+=nz;
+    }
+    for(let v=0;v<n;v++){
+      const i=v*3, nx=normals[i], ny=normals[i+1], nz=normals[i+2];
+      const len=Math.hypot(nx,ny,nz)||1;
+      normals[i]=nx/len; normals[i+1]=ny/len; normals[i+2]=nz/len;
+    }
+    return normals;
+  }
+  class Mesh{
+    constructor(geom){
+      if(!(geom.positions instanceof Float32Array)) throw new Error('positions debe ser Float32Array');
+      if(!(geom.indices   instanceof Uint16Array || geom.indices instanceof Uint32Array)) throw new Error('indices debe ser Uint16Array/Uint32Array');
+      let colors = ensurePerVertexColors(geom.positions, geom.colors);
+      let normals= geom.normals;
+      if(!(normals instanceof Float32Array) || normals.length!==geom.positions.length){
+        normals = computeFlatNormals(geom.positions, geom.indices);
+      }
+      this.vbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vbo); gl.bufferData(gl.ARRAY_BUFFER,geom.positions,gl.STATIC_DRAW);
+      this.cbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.cbo); gl.bufferData(gl.ARRAY_BUFFER,colors,           gl.STATIC_DRAW);
+      this.nbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.nbo); gl.bufferData(gl.ARRAY_BUFFER,normals,         gl.STATIC_DRAW);
+      this.ibo=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,geom.indices,gl.STATIC_DRAW);
+      this.count=geom.indices.length; this.indexType=(geom.indices instanceof Uint32Array)? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+    }
+    draw(modelMatrix){
+      gl.uniformMatrix4fv(uMM,false,modelMatrix);
+      const mv=multiplyMat4(window._currentView, modelMatrix);
+      const nm=mat3InverseTranspose(mat3FromMat4(mv));
+      gl.uniformMatrix3fv(uNM,false,nm);
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.vbo); gl.enableVertexAttribArray(aPosition); gl.vertexAttribPointer(aPosition,3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.cbo); gl.enableVertexAttribArray(aColor);    gl.vertexAttribPointer(aColor,   3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.nbo); gl.enableVertexAttribArray(aNormal);   gl.vertexAttribPointer(aNormal,  3,gl.FLOAT,false,0,0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ibo);
+      gl.drawElements(gl.TRIANGLES,this.count,this.indexType,0);
+    }
+  }
+  class Node{ constructor({mesh=null, local=mat4Identity(), children=[]}={}){ this.mesh=mesh; this.local=local; this.children=children; this._world=mat4Identity(); } }
+  function dfsDraw(node, parentWorld){ const world=multiplyMat4(parentWorld,node.local); node._world=world; if(node.mesh) node.mesh.draw(world); for(const c of node.children) dfsDraw(c, world); }
+
+  // Simple penguin made of spheres/cones/torus (uses your existing make* if you have them)
+  function makeSphere(rad=0.5, latSeg=16, lonSeg=16, color=[0.9,0.9,0.9]){
+    const pos=[], col=[], ind=[], nor=[];
+    for(let y=0;y<=latSeg;y++){
+      const v=y/latSeg; const theta=v*Math.PI;
+      for(let x=0;x<=lonSeg;x++){
+        const u=x/lonSeg; const phi=u*2*Math.PI;
+        const sx=Math.sin(theta)*Math.cos(phi);
+        const sy=Math.cos(theta);
+        const sz=Math.sin(theta)*Math.sin(phi);
+        pos.push(rad*sx, rad*sy, rad*sz);
+        col.push(color[0],color[1],color[2]);
+        nor.push(sx,sy,sz);
+      }
+    }
+    for(let y=0;y<latSeg;y++){
+      for(let x=0;x<lonSeg;x++){
+        const i=y*(lonSeg+1)+x; ind.push(i,i+lonSeg+1,i+1, i+1,i+lonSeg+1,i+lonSeg+2);
+      }
+    }
+    return {
+      positions:new Float32Array(pos), colors:new Float32Array(col),
+      normals:new Float32Array(nor), indices:new Uint16Array(ind)
+    };
+  }
+  function makeCone(r=0.12,h=0.28,seg=20,color=[0.96,0.62,0.05]){
+    const pos=[],col=[],ind=[],nor=[]; const half=h*0.5; const apex=[0,half,0];
+    for(let i=0;i<=seg;i++){
+      const a=i/seg*2*Math.PI; const x=Math.cos(a)*r, z=Math.sin(a)*r;
+      pos.push(x,-half,z); col.push(...color);
+      const nx=x/r, nz=z/r, ny=r/h; const len=Math.hypot(nx,ny,nz);
+      nor.push(nx/len,ny/len,nz/len);
+    }
+    const apexIdx=pos.length/3; pos.push(...apex); col.push(...color); nor.push(0,1,0);
+    for(let i=0;i<seg;i++){ ind.push(i,i+1,apexIdx); }
+    const cIdx=pos.length/3; pos.push(0,-half,0); col.push(...color); nor.push(0,-1,0);
+    for(let i=0;i<=seg;i++){ const a=i/seg*2*Math.PI; pos.push(Math.cos(a)*r,-half,Math.sin(a)*r); col.push(...color); nor.push(0,-1,0); }
+    for(let i=1;i<=seg;i++){ ind.push(cIdx, cIdx+i, cIdx+i+1); }
+    return { positions:new Float32Array(pos), colors:new Float32Array(col), normals:new Float32Array(nor), indices:new Uint16Array(ind) };
+  }
+  function makeTorus(R=0.18,r=0.07,segR=24,segr=16,color=[0.96,0.62,0.05]){
+    const pos=[],col=[],nor=[],ind=[]; for(let i=0;i<=segR;i++){ const u=i/segR*2*Math.PI, cu=Math.cos(u), su=Math.sin(u);
+      for(let j=0;j<=segr;j++){ const v=j/segr*2*Math.PI, cv=Math.cos(v), sv=Math.sin(v);
+        const x=(R+r*cv)*cu, y=r*sv, z=(R+r*cv)*su; pos.push(x,y,z); col.push(...color); nor.push(cu*cv,sv,su*cv);
+    }}
+    const row=segr+1; for(let i=0;i<segR;i++){ for(let j=0;j<segr;j++){ const a=i*row+j,b=a+row; ind.push(a,b,a+1, a+1,b,b+1); } }
+    return { positions:new Float32Array(pos), colors:new Float32Array(col), normals:new Float32Array(nor), indices:new Uint16Array(ind) };
+  }
+  class Penguin{
+    constructor({bodyColor=[0.04,0.12,0.29], accentColor=[0.96,0.62,0.05]}={}){
+      this.bodyColor=bodyColor; this.accentColor=accentColor;
+      this.mBody = new Mesh(makeSphere(0.7,22,22,this.bodyColor));
+      this.mHead = new Mesh(makeSphere(0.45,20,20,this.bodyColor));
+      this.mBelly= new Mesh(makeSphere(0.55,20,20,[0.95,0.95,0.95]));
+      this.mBeak = new Mesh(makeCone(0.12,0.28,20,this.accentColor));
+      this.mWing = new Mesh(makeCone(0.14,0.6,20,this.bodyColor));
+      this.mEye  = new Mesh(makeSphere(0.07,14,14,[0.05,0.05,0.05]));
+      this.mFoot = new Mesh(makeTorus(0.18,0.07,24,16,this.accentColor));
+      this.baseAngle=0; this.headYaw=0; this.headPitch=0; this.flapPhase=0; this.flapAmp=35*Math.PI/180;
+      this.root=new Node({local:mat4Identity(),children:[]});
+      this.nBase=new Node({local:mat4Identity(),children:[]});
+      let Tbody=mat4Translate(mat4Identity(),[0,0.85,0]); this.nBody=new Node({mesh:this.mBody, local:Tbody, children:[]});
+      let Tbelly=mat4Translate(mat4Identity(),[0,0.85,0.25]); this.nBelly=new Node({mesh:this.mBelly, local:Tbelly, children:[]});
+      let Thead=mat4Translate(mat4Identity(),[0,1.6,0]); this.nHead=new Node({mesh:this.mHead, local:Thead, children:[]});
+      let Tbeak=mat4Translate(mat4Identity(),[0,0.0,0.38]); this.nBeak=new Node({mesh:this.mBeak, local:Tbeak, children:[]});
+      let TeyeL=mat4Translate(mat4Identity(),[-0.16,0.06,0.34]); this.nEyeL=new Node({mesh:this.mEye, local:TeyeL, children:[]});
+      let TeyeR=mat4Translate(mat4Identity(),[ 0.16,0.06,0.34]); this.nEyeR=new Node({mesh:this.mEye, local:TeyeR, children:[]});
+      let TwingL=mat4Translate(mat4Identity(),[-1,1,0]); this.nWingL=new Node({mesh:this.mWing, local:TwingL, children:[]});
+      let TwingR=mat4Translate(mat4Identity(),[ 1,1,0]); this.nWingR=new Node({mesh:this.mWing, local:TwingR, children:[]});
+      let TfootL=mat4Translate(mat4Identity(),[-0.28,0.32,0.18]); this.nFootL=new Node({mesh:this.mFoot, local:TfootL, children:[]});
+      let TfootR=mat4Translate(mat4Identity(),[ 0.28,0.32,0.18]); this.nFootR=new Node({mesh:this.mFoot, local:TfootR, children:[]});
+      this.root.children.push(this.nBase);
+      this.nBase.children.push(this.nBody,this.nWingL,this.nWingR,this.nFootL,this.nFootR,this.nHead,this.nBelly);
+      this.nHead.children.push(this.nBeak,this.nEyeL,this.nEyeR);
+      this.position={x:0,z:0};
+    }
+    buildLocal(){
+      let R=mat4Identity(); R=mat4Translate(R,[this.position.x,0,this.position.z]); this.root.local=R;
+      this.nBase.local = mat4RotateY(mat4Identity(), this.baseAngle);
+      let Thead=mat4Translate(mat4Identity(),[0,1.6,0]); Thead=mat4RotateY(Thead,this.headYaw); Thead=mat4RotateX(Thead,this.headPitch); this.nHead.local=Thead;
+    }
+    draw(world){ this.buildLocal(); dfsDraw(this.root, world); }
+  }
+
+  // ----------------- Scene and UI -----------------
+  const actors=[]; const selActor=document.getElementById('selActor');
+  const btnAdd=document.getElementById('btnAdd'); const btnRemove=document.getElementById('btnRemove');
+  const colorBody=document.getElementById('colorBody'); const colorAccent=document.getElementById('colorAccent');
+  const baseAngle=document.getElementById('baseAngle'); const headYaw=document.getElementById('headYaw'); const headPitch=document.getElementById('headPitch');
+  const flapAmp=document.getElementById('flapAmp'); const speed=document.getElementById('speed');
+  const toggleWaddle=document.getElementById('toggleWaddle'); const toggleFlap=document.getElementById('toggleFlap');
+  const ka=document.getElementById('ka'); const kd=document.getElementById('kd'); const ks=document.getElementById('ks'); const shininess=document.getElementById('shininess');
+  const ambColor=document.getElementById('ambColor'); const difColor=document.getElementById('difColor'); const speColor=document.getElementById('speColor');
+  const lx=document.getElementById('lx'); const ly=document.getElementById('ly'); const lz=document.getElementById('lz');
+
+  function refreshSelect(){ selActor.innerHTML=''; actors.forEach((r,i)=>{ const opt=document.createElement('option'); opt.value=i; opt.textContent=`Penguin ${i+1}`; selActor.appendChild(opt); }); }
+  btnAdd.onclick=()=>{ const p=new Penguin(); const n=actors.length, col=n%6, row=Math.floor(n/6); p.position.x=(col-2.5)*2.2; p.position.z=(row)*-2.6; actors.push(p); refreshSelect(); selActor.value=String(actors.length-1); };
+  btnRemove.onclick=()=>{ const i=Number(selActor.value||0); if(actors.length>0){ actors.splice(i,1); refreshSelect(); selActor.value='0'; } };
+  baseAngle.oninput=headYaw.oninput=headPitch.oninput=flapAmp.oninput=()=>{
+    const i=Number(selActor.value||0); const p=actors[i]; if(!p) return;
+    p.baseAngle=Number(baseAngle.value)*Math.PI/180;
+    p.headYaw  =Number(headYaw.value)*Math.PI/180;
+    p.headPitch=Number(headPitch.value)*Math.PI/180;
+    p.flapAmp  =Number(flapAmp.value)*Math.PI/180;
+  };
+
+  // start with one penguin
+  btnAdd.click();
+
+  // ----------------- Render loop -----------------
+  let t0 = performance.now();
+  function render(){
+    const t = performance.now(); const dt=(t-t0)*0.001; t0=t;
+
+    // optional: sync viewport
+    if(canvas.width!==canvas.clientWidth || canvas.height!==canvas.clientHeight){
+      canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight; gl.viewport(0,0,canvas.width,canvas.height);
+    }
+
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    // 1) background
+    drawBillboard();
+
+    // 2) camera/view (define once per frame)
+    const view = buildView();
+    window._currentView = view;
+
+    // 3) light in view space
+    const lightPosWorld=[Number(lx.value),Number(ly.value),Number(lz.value)];
+    const lightPosView = multiplyMat4Vec3(view, lightPosWorld);
+
+    // 4) draw floor (programTex)
+    gl.useProgram(programTex);
+    gl.uniformMatrix4fv(uPM_T,false,proj);
+    gl.uniformMatrix4fv(uMVM_T,false,view);
+    gl.uniformMatrix4fv(uMM_T,false,mat4Identity());
+    gl.uniformMatrix3fv(uNM_T,false,mat3InverseTranspose(mat3FromMat4(view)));
+    gl.uniform1f(uKa_T, Number(ka.value));
+    gl.uniform1f(uKd_T, Number(kd.value));
+    gl.uniform1f(uKs_T, Number(ks.value));
+    gl.uniform1f(uSh_T, Number(shininess.value));
+    gl.uniform3fv(uAmb_T,new Float32Array(hexToRGB3(ambColor.value)));
+    gl.uniform3fv(uDif_T,new Float32Array(hexToRGB3(difColor.value)));
+    gl.uniform3fv(uSpe_T,new Float32Array(hexToRGB3(speColor.value)));
+    gl.uniform3fv(uLPos_T,new Float32Array(lightPosView));
+    gl.uniform3fv(uVPos_T,new Float32Array([0,0,0]));
+    gl.uniform1f(uUVScale_T,6.0);
+    gl.uniform1i(uUseNormal_T,true);
+    gl.bindBuffer(gl.ARRAY_BUFFER,floor.vbo); gl.enableVertexAttribArray(aPosT); gl.vertexAttribPointer(aPosT,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,floor.nbo); gl.enableVertexAttribArray(aNormT); gl.vertexAttribPointer(aNormT,3,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ARRAY_BUFFER,floor.tbo); gl.enableVertexAttribArray(aUVT);  gl.vertexAttribPointer(aUVT, 2,gl.FLOAT,false,0,0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,floor.ibo);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,texIce);   gl.uniform1i(uBaseTex_T,0);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,texIceNM); gl.uniform1i(uNormalMap_T,1);
+    gl.drawElements(gl.TRIANGLES,floor.count,gl.UNSIGNED_SHORT,0);
+
+    // 5) draw penguins (program)
+    gl.useProgram(program);
+    gl.uniformMatrix4fv(uPM,false,proj);
+    gl.uniformMatrix4fv(uMVM,false,view);
+    gl.uniform3fv(uLightPosView,new Float32Array(lightPosView));
+    gl.uniform3fv(uViewPosView,new Float32Array([0,0,0]));
+    gl.uniform1f(uKa, Number(ka.value));
+    gl.uniform1f(uKd, Number(kd.value));
+    gl.uniform1f(uKs, Number(ks.value));
+    gl.uniform1f(uShininess, Number(shininess.value));
+    gl.uniform3fv(uAmbientColor, new Float32Array(hexToRGB3(ambColor.value)));
+    gl.uniform3fv(uDiffuseColor, new Float32Array(hexToRGB3(difColor.value)));
+    gl.uniform3fv(uSpecularColor,new Float32Array(hexToRGB3(speColor.value)));
+
+    const sp = Number(speed.value || 1.0);
+    const world = mat4Identity();
+    for(const p of actors){
+      if(sp>0){
+        if(toggleWaddle?.checked) p.baseAngle += Math.sin(t*0.002)*0.0025*sp;
+        if(toggleFlap?.checked)   p.flapPhase = (p.flapPhase||0)+dt*2.0*sp;
+      }
+      const effAmp=Math.min(p.flapAmp,12*Math.PI/180); const flap=Math.sin(p.flapPhase||0)*effAmp;
+      let LwingL=mat4Translate(mat4Identity(),[-0.58,1.30,0]); LwingL=mat4RotateY(LwingL,0.12);  LwingL=mat4RotateZ(LwingL, Math.PI*0.5+flap); p.nWingL.local=LwingL;
+      let LwingR=mat4Translate(mat4Identity(),[ 0.58,1.30,0]); LwingR=mat4RotateY(LwingR,-0.12); LwingR=mat4RotateZ(LwingR,-Math.PI*0.5-flap); p.nWingR.local=LwingR;
+      const step=Math.sin((p.flapPhase||0)*0.8)*0.10;
+      let LfootL=mat4Translate(mat4Identity(),[-0.28,0.32,0.18]); LfootL=mat4RotateX(LfootL, step);  p.nFootL.local=LfootL;
+      let LfootR=mat4Translate(mat4Identity(),[ 0.28,0.32,0.18]); LfootR=mat4RotateX(LfootR,-step); p.nFootR.local=LfootR;
+      p.draw(world);
+    }
+
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+  </script>
+</body>
+</html>

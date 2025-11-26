@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>HW 6 - Ray Tracing (Jaqueline Garcia)</title>
+    <style>
+        body {
+            background: #0e1013;
+            color: #e8eef2;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        h2, h3 { margin: 10px 0; color: #fff; }
+        p { color: #b9c2cc; margin: 8px 0; }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .panel {
+            background: #14171b;
+            border: 1px solid #2a2f36;
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        canvas {
+            border: 1px solid #39424d;
+            border-radius: 10px;
+            display: block;
+        }
+
+        .controls {
+            min-width: 280px;
+        }
+
+        .controls label {
+            font-size: 13px;
+            color: #b9c2cc;
+            display: block;
+            margin: 12px 0 4px 0;
+        }
+
+        .controls input[type="range"] {
+            width: 100%;
+            background: #1a1f25;
+        }
+
+        .controls .value-display {
+            display: inline-block;
+            min-width: 45px;
+            color: #4a9eff;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .section-divider {
+            border-top: 1px solid #2a2f36;
+            margin: 16px 0;
+        }
+
+        small {
+            color: #9aa6b2;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>HW 6 - Ray Tracing con Escena de Hielo</h2>
+<p>
+    Trazado de rayos con reflexión, refracción, sombras y múltiples fuentes de luz.<br>
+    <small>Usa el mouse para rotar la cámara. Los controles permiten ajustar la iluminación y efectos.</small>
+</p>
+
+<div class="container">
+    <div class="panel controls">
+        <h3>⚙️ Controles de Ray Tracing</h3>
+
+        <label>
+            Rebotes Máximos
+            <span class="value-display" id="bouncesValue">5</span>
+            <input type="range" id="maxBounces" min="1" max="8" value="5" step="1">
+        </label>
+
+        <label>
+            Intensidad Ambiental
+            <span class="value-display" id="ambientValue">0.12</span>
+            <input type="range" id="ambientStrength" min="0" max="0.5" value="0.12" step="0.01">
+        </label>
+
+        <label>
+            Brillo Especular (Shininess)
+            <span class="value-display" id="shininessValue">80</span>
+            <input type="range" id="shininess" min="8" max="256" value="80" step="8">
+        </label>
+
+        <div class="section-divider"></div>
+        <h3>💡 Fuentes de Luz</h3>
+
+        <label>
+            Intensidad Luz Principal (Cálida)
+            <span class="value-display" id="light1Value">1.2</span>
+            <input type="range" id="light1Intensity" min="0" max="3" value="1.2" step="0.1">
+        </label>
+
+        <label>
+            Intensidad Luz Secundaria (Fría)
+            <span class="value-display" id="light2Value">0.9</span>
+            <input type="range" id="light2Intensity" min="0" max="3" value="0.9" step="0.1">
+        </label>
+
+        <div class="section-divider"></div>
+        <h3>🎬 Animación</h3>
+
+        <label>
+            Velocidad de Animación
+            <span class="value-display" id="speedValue">1.0</span>
+            <input type="range" id="animSpeed" min="0" max="2" value="1.0" step="0.1">
+        </label>
+
+        <div class="section-divider"></div>
+        <small>
+            <strong>Geometrías:</strong><br>
+            • 2 Esferas (reflectiva y refractiva)<br>
+            • 1 Cubo difuso<br>
+            • 2 Tetraedros de cristal<br>
+            • 1 Octaedro reflectivo<br>
+            • 2 Fuentes de luz dinámicas
+        </small>
+    </div>
+
+    <div class="panel">
+        <canvas id="glCanvas" width="900" height="700"></canvas>
+    </div>
+</div>
+
+<script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec2 position;
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+    precision highp float;
+
+    // Uniformes para animación y controles
+    uniform float u_time;
+    uniform vec2 u_resolution;
+    uniform int u_maxBounces;
+    uniform float u_ambientStrength;
+    uniform float u_shininess;
+    uniform float u_light1Intensity;
+    uniform float u_light2Intensity;
+    uniform vec2 u_mouse;
+
+    out vec4 fragColor;
+
+    // Constantes para tipos de materiales
+    const int MATERIAL_DIFFUSE = 0;
+    const int MATERIAL_REFLECTIVE = 1;
+    const int MATERIAL_REFRACTIVE = 2;
+    const float PI = 3.14159265359;
+
+    // Estructura de rayo
+    struct Ray {
+        vec3 origin;
+        vec3 direction;
+    };
+
+    // Estructura de esfera
+    struct Sphere {
+        vec3 center;
+        float radius;
+        vec3 color;
+        int material;
+        float reflectivity;
+        float refractiveIndex;
+    };
+
+    // Estructura para datos de intersección
+    struct HitData {
+        bool hit;
+        float t;
+        vec3 point;
+        vec3 normal;
+        vec3 color;
+        int material;
+        float reflectivity;
+        float refractiveIndex;
+        bool frontFace;
+    };
+
+    // Objetos de la escena - Tema de hielo/nieve
+    Sphere spheres[6];
+    Sphere lightSphere1;
+    Sphere lightSphere2;
+
+    // Matriz de rotación para poliedros
+    mat3 rotateY(float angle) {
+        float c = cos(angle);
+        float s = sin(angle);
+        return mat3(
+            c, 0.0, s,
+            0.0, 1.0, 0.0,
+            -s, 0.0, c
+        );
+    }
+
+    mat3 rotateX(float angle) {
+        float c = cos(angle);
+        float s = sin(angle);
+        return mat3(
+            1.0, 0.0, 0.0,
+            0.0, c, -s,
+            0.0, s, c
+        );
+    }
+
+    // Inicializar escena con tema de hielo/nieve
+    void initScene(float time) {
+        // Luz principal (amarilla cálida - como sol invernal)
+        lightSphere1 = Sphere(
+            vec3(sin(time * 0.6) * 2.5, 2.2, cos(time * 0.6) * 2.5 - 3.0),
+            0.35,
+            vec3(1.0, 0.85, 0.6) * 6.0,
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
+
+        // Luz secundaria (azul fría - como reflejo de hielo)
+        lightSphere2 = Sphere(
+            vec3(cos(time * 0.4) * 1.8, 1.5, sin(time * 0.4) * 1.8 - 2.5),
+            0.28,
+            vec3(0.6, 0.8, 1.0) * 4.5,
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
+
+        // Esfera 1 - Bola de nieve reflectiva (plateada como hielo)
+        spheres[0] = Sphere(
+            vec3(sin(time * 0.5) * 0.9 + 0.6, -0.2, cos(time * 0.5) * 0.6 - 1.5),
+            0.55,
+            vec3(0.92, 0.95, 0.98),
+            MATERIAL_REFLECTIVE,
+            0.92,
+            1.0
+        );
+
+        // Esfera 2 - Esfera de cristal de hielo (refractiva)
+        spheres[1] = Sphere(
+            vec3(cos(time * 0.7) * 0.6, 0.3, sin(time * 0.7) * 0.5 - 2.2),
+            0.65,
+            vec3(0.88, 0.94, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.31  // Índice de refracción del hielo
+        );
+
+        // Cubo difuso - Bloque de hielo (usando esfera como aproximación)
+        spheres[2] = Sphere(
+            vec3(-1.3, sin(time * 1.1) * 0.25 - 0.4, -1.8),
+            0.5,
+            vec3(0.7, 0.85, 0.95),
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
+
+        // Tetraedro 1 - Cristal pequeño (esfera pequeña refractiva)
+        spheres[3] = Sphere(
+            vec3(-0.5 + cos(time * 0.9) * 0.3, -0.6, -1.0),
+            0.3,
+            vec3(0.85, 0.92, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.5
+        );
+
+        // Tetraedro 2 - Otro cristal
+        spheres[4] = Sphere(
+            vec3(1.2 + sin(time * 0.8) * 0.3, -0.5, -1.3),
+            0.35,
+            vec3(0.9, 0.95, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.45
+        );
+
+        // Octaedro - Gema de hielo reflectiva
+        spheres[5] = Sphere(
+            vec3(sin(time * 0.6) * 0.5, 0.8, cos(time * 0.6) * 0.4 - 1.0),
+            0.4,
+            vec3(0.95, 0.97, 1.0),
+            MATERIAL_REFLECTIVE,
+            0.88,
+            1.0
+        );
+    }
+
+    // Intersección rayo-esfera
+    bool intersectSphere(Ray ray, Sphere sphere, out float t) {
+        vec3 oc = ray.origin - sphere.center;
+        float a = dot(ray.direction, ray.direction);
+        float b = 2.0 * dot(oc, ray.direction);
+        float c = dot(oc, oc) - sphere.radius * sphere.radius;
+        float discriminant = b * b - 4.0 * a * c;
+
+        if (discriminant < 0.0) {
+            return false;
+        }
+
+        float sqrtd = sqrt(discriminant);
+        float t0 = (-b - sqrtd) / (2.0 * a);
+        float t1 = (-b + sqrtd) / (2.0 * a);
+
+        t = t0 > 0.001 ? t0 : t1;
+        return t > 0.001;
+    }
+
+    // Intersección con plano (piso de hielo)
+    bool intersectPlane(Ray ray, float y, out float t, out vec3 normal) {
+        if (abs(ray.direction.y) < 0.001) return false;
+
+        t = (y - ray.origin.y) / ray.direction.y;
+        normal = vec3(0.0, 1.0, 0.0);
+        return t > 0.001;
+    }
+
+    // Trazar escena buscando intersecciones
+    HitData traceScene(Ray ray, bool includeLightSpheres) {
+        HitData closest;
+        closest.hit = false;
+        closest.t = 1e10;
+
+        // Intersección con luces
+        if (includeLightSpheres) {
+            float t;
+            if (intersectSphere(ray, lightSphere1, t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    closest.normal = normalize(closest.point - lightSphere1.center);
+                    closest.color = lightSphere1.color;
+                    closest.material = lightSphere1.material;
+                    closest.reflectivity = lightSphere1.reflectivity;
+                    closest.refractiveIndex = lightSphere1.refractiveIndex;
+                    closest.frontFace = true;
+                }
+            }
+
+            if (intersectSphere(ray, lightSphere2, t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    closest.normal = normalize(closest.point - lightSphere2.center);
+                    closest.color = lightSphere2.color;
+                    closest.material = lightSphere2.material;
+                    closest.reflectivity = lightSphere2.reflectivity;
+                    closest.refractiveIndex = lightSphere2.refractiveIndex;
+                    closest.frontFace = true;
+                }
+            }
+        }
+
+        // Intersección con todas las esferas/geometrías
+        for (int i = 0; i < 6; i++) {
+            float t;
+            if (intersectSphere(ray, spheres[i], t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    vec3 outwardNormal = normalize(closest.point - spheres[i].center);
+                    closest.frontFace = dot(ray.direction, outwardNormal) < 0.0;
+                    closest.normal = closest.frontFace ? outwardNormal : -outwardNormal;
+                    closest.color = spheres[i].color;
+                    closest.material = spheres[i].material;
+                    closest.reflectivity = spheres[i].reflectivity;
+                    closest.refractiveIndex = spheres[i].refractiveIndex;
+                }
+            }
+        }
+
+        // Intersección con el piso (hielo)
+        float planeT;
+        vec3 planeNormal;
+        if (intersectPlane(ray, -1.0, planeT, planeNormal)) {
+            if (planeT < closest.t) {
+                closest.hit = true;
+                closest.t = planeT;
+                closest.point = ray.origin + ray.direction * planeT;
+                closest.normal = planeNormal;
+
+                // Patrón de tablero de ajedrez para el piso de hielo
+                vec2 tilePos = floor(closest.point.xz * 2.0);
+                float checker = mod(tilePos.x + tilePos.y, 2.0);
+
+                if (checker < 0.5) {
+                    closest.color = vec3(0.75, 0.85, 0.95); // Hielo claro
+                } else {
+                    closest.color = vec3(0.65, 0.75, 0.88); // Hielo más oscuro
+                }
+
+                closest.material = MATERIAL_DIFFUSE;
+                closest.reflectivity = 0.2; // Piso ligeramente reflectivo
+                closest.refractiveIndex = 1.0;
+                closest.frontFace = true;
+            }
+        }
+
+        return closest;
+    }
+
+    // Refracción usando ley de Snell
+    vec3 refraction(vec3 I, vec3 N, float eta) {
+        float cosi = -dot(N, I);
+        float cost2 = 1.0 - eta * eta * (1.0 - cosi * cosi);
+
+        if (cost2 < 0.0) {
+            return vec3(0.0);
+        }
+
+        return eta * I + (eta * cosi - sqrt(cost2)) * N;
+    }
+
+    // Aproximación de Schlick para Fresnel
+    float schlick(float cosine, float ref_idx) {
+        float r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
+        r0 = r0 * r0;
+        return r0 + (1.0 - r0) * pow((1.0 - cosine), 5.0);
+    }
+
+    // Función principal de trazado de rayos
+    vec3 trace(Ray ray, int maxDepth) {
+        vec3 color = vec3(0.0);
+        vec3 attenuation = vec3(1.0);
+
+        for (int depth = 0; depth < 8; depth++) {
+            if (depth >= maxDepth) break;
+
+            // Verificar si golpeamos una luz directamente
+            HitData lightHit = traceScene(ray, true);
+            if (lightHit.hit && lightHit.t < 1e9) {
+                bool isLight = (length(lightHit.point - lightSphere1.center) < lightSphere1.radius + 0.01) ||
+                               (length(lightHit.point - lightSphere2.center) < lightSphere2.radius + 0.01);
+                if (isLight) {
+                    color += attenuation * lightHit.color;
+                    break;
+                }
+            }
+
+            HitData hit = traceScene(ray, false);
+
+            if (!hit.hit) {
+                // Fondo degradado tipo cielo invernal
+                float t = 0.5 * (ray.direction.y + 1.0);
+                vec3 skyColor = mix(
+                    vec3(0.12, 0.18, 0.25),  // Horizonte oscuro
+                    vec3(0.45, 0.65, 0.85),  // Cielo azul claro
+                    t
+                );
+                color += attenuation * skyColor * 0.4;
+                break;
+            }
+
+            // Calcular iluminación de ambas fuentes de luz
+            vec3 totalDirectLight = vec3(0.0);
+
+            // Luz 1
+            vec3 lightDir1 = normalize(lightSphere1.center - hit.point);
+            float lightDist1 = length(lightSphere1.center - hit.point);
+
+            // Shadow ray para luz 1
+            Ray shadowRay1 = Ray(hit.point + hit.normal * 0.001, lightDir1);
+            HitData shadowHit1 = traceScene(shadowRay1, false);
+            bool inShadow1 = shadowHit1.hit && shadowHit1.t < lightDist1;
+
+            // Luz 2
+            vec3 lightDir2 = normalize(lightSphere2.center - hit.point);
+            float lightDist2 = length(lightSphere2.center - hit.point);
+
+            // Shadow ray para luz 2
+            Ray shadowRay2 = Ray(hit.point + hit.normal * 0.001, lightDir2);
+            HitData shadowHit2 = traceScene(shadowRay2, false);
+            bool inShadow2 = shadowHit2.hit && shadowHit2.t < lightDist2;
+
+            // Material difuso - Modelo de Phong
+            if (hit.material == MATERIAL_DIFFUSE) {
+                vec3 ambientLight = u_ambientStrength * hit.color;
+
+                // Contribución de luz 1 (cálida)
+                if (!inShadow1) {
+                    float diff1 = max(dot(hit.normal, lightDir1), 0.0);
+                    vec3 viewDir = normalize(-ray.direction);
+                    vec3 reflectDir1 = reflect(-lightDir1, hit.normal);
+                    float spec1 = pow(max(dot(viewDir, reflectDir1), 0.0), u_shininess);
+                    float attenFactor1 = 1.0 / (1.0 + 0.09 * lightDist1 + 0.032 * lightDist1 * lightDist1);
+                    totalDirectLight += (diff1 * hit.color + spec1 * vec3(0.9, 0.9, 1.0)) *
+                                       lightSphere1.color * 0.15 * attenFactor1 * u_light1Intensity;
+                }
+
+                // Contribución de luz 2 (fría)
+                if (!inShadow2) {
+                    float diff2 = max(dot(hit.normal, lightDir2), 0.0);
+                    vec3 viewDir = normalize(-ray.direction);
+                    vec3 reflectDir2 = reflect(-lightDir2, hit.normal);
+                    float spec2 = pow(max(dot(viewDir, reflectDir2), 0.0), u_shininess);
+                    float attenFactor2 = 1.0 / (1.0 + 0.09 * lightDist2 + 0.032 * lightDist2 * lightDist2);
+                    totalDirectLight += (diff2 * hit.color + spec2 * vec3(0.9, 0.9, 1.0)) *
+                                       lightSphere2.color * 0.15 * attenFactor2 * u_light2Intensity;
+                }
+
+                vec3 lighting = totalDirectLight + ambientLight;
+                color += attenuation * lighting;
+
+                // Si el piso es ligeramente reflectivo, continuar con reflexión
+                if (hit.reflectivity > 0.01) {
+                    attenuation *= hit.reflectivity * 0.5;
+                    ray = Ray(hit.point + hit.normal * 0.001, reflect(ray.direction, hit.normal));
+                } else {
+                    break;
+                }
+
+            } else if (hit.material == MATERIAL_REFRACTIVE) {
+                // Material refractivo (cristal de hielo)
+                float eta = hit.frontFace ? (1.0 / hit.refractiveIndex) : hit.refractiveIndex;
+                float cosTheta = min(dot(-ray.direction, hit.normal), 1.0);
+                float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+                bool totalInternalReflection = eta * sinTheta > 1.0;
+                float schlickValue = schlick(cosTheta, eta);
+
+                vec3 direction;
+                if (totalInternalReflection || schlickValue > 0.5) {
+                    // Reflexión
+                    direction = reflect(ray.direction, hit.normal);
+                } else {
+                    // Refracción
+                    direction = refraction(ray.direction, hit.normal, eta);
+                    if (length(direction) < 0.01) {
+                        direction = reflect(ray.direction, hit.normal);
+                    }
+                }
+
+                ray = Ray(hit.point + direction * 0.001, direction);
+                attenuation *= hit.color;
+
+            } else {
+                // Material reflectivo (espejo de hielo)
+                // Agregar iluminación especular directa
+                if (!inShadow1) {
+                    vec3 reflectDir1 = reflect(-lightDir1, hit.normal);
+                    float spec1 = pow(max(dot(-ray.direction, reflectDir1), 0.0), 128.0);
+                    totalDirectLight += spec1 * lightSphere1.color * 0.08 * u_light1Intensity;
+                }
+                if (!inShadow2) {
+                    vec3 reflectDir2 = reflect(-lightDir2, hit.normal);
+                    float spec2 = pow(max(dot(-ray.direction, reflectDir2), 0.0), 128.0);
+                    totalDirectLight += spec2 * lightSphere2.color * 0.08 * u_light2Intensity;
+                }
+
+                color += attenuation * totalDirectLight;
+                attenuation *= hit.reflectivity * hit.color;
+                ray = Ray(hit.point + hit.normal * 0.001, reflect(ray.direction, hit.normal));
+            }
+
+            // Terminar si la atenuación es muy baja
+            if (length(attenuation) < 0.01) break;
+        }
+
+        return color;
+    }
+
+    void main() {
+        initScene(u_time);
+
+        // Coordenadas UV centradas
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
+
+        // Configurar cámara con rotación del mouse
+        float camRotY = u_mouse.x * 0.5;
+        float camRotX = u_mouse.y * 0.3;
+
+        vec3 origin = vec3(
+            sin(camRotY) * 3.5,
+            1.0 + camRotX,
+            cos(camRotY) * 3.5
+        );
+
+        vec3 lookAt = vec3(0.0, 0.0, -1.5);
+        vec3 forward = normalize(lookAt - origin);
+        vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+        vec3 up = cross(forward, right);
+
+        vec3 direction = normalize(forward + uv.x * right * 0.8 + uv.y * up * 0.8);
+
+        // Crear y trazar el rayo
+        Ray ray = Ray(origin, direction);
+        vec3 color = trace(ray, u_maxBounces);
+
+        // Corrección gamma
+        color = pow(color, vec3(1.0 / 2.2));
+
+        fragColor = vec4(color, 1.0);
+    }
+</script>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
+
+        if (!gl) {
+            alert('WebGL 2 no está soportado en este navegador');
+            throw new Error('WebGL 2 no soportado');
+        }
+
+        // Compilar shaders
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Error compilando shader:', gl.getShaderInfoLog(shader));
+                throw new Error(gl.getShaderInfoLog(shader));
+            }
+
+            return shader;
+        }
+
+        function createProgram(gl, vsSource, fsSource) {
+            const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+            const prog = gl.createProgram();
+            gl.attachShader(prog, vs);
+            gl.attachShader(prog, fs);
+            gl.linkProgram(prog);
+
+            if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+                throw new Error(gl.getProgramInfoLog(prog));
+            }
+
+            return prog;
+        }
+
+        const vertexShaderSource = document.getElementById('vertex-shader').textContent;
+        const fragmentShaderSource = document.getElementById('fragment-shader').textContent;
+
+        const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
+
+        // Obtener ubicaciones
+        const positionLocation = gl.getAttribLocation(program, 'position');
+        const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+        const timeLocation = gl.getUniformLocation(program, 'u_time');
+        const maxBouncesLocation = gl.getUniformLocation(program, 'u_maxBounces');
+        const ambientStrengthLocation = gl.getUniformLocation(program, 'u_ambientStrength');
+        const shininessLocation = gl.getUniformLocation(program, 'u_shininess');
+        const light1IntensityLocation = gl.getUniformLocation(program, 'u_light1Intensity');
+        const light2IntensityLocation = gl.getUniformLocation(program, 'u_light2Intensity');
+        const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
+
+        // Crear geometría de pantalla completa
+        const positions = new Float32Array([
+            -1, -1,
+            1, -1,
+            -1, 1,
+            1, 1
+        ]);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        // Variables de control
+        let maxBounces = 5;
+        let ambientStrength = 0.12;
+        let shininess = 80.0;
+        let light1Intensity = 1.2;
+        let light2Intensity = 0.9;
+        let animSpeed = 1.0;
+
+        // Mouse tracking
+        let mouseX = 0.0;
+        let mouseY = 0.0;
+        let isDragging = false;
+
+        canvas.addEventListener('mousedown', () => { isDragging = true; });
+        canvas.addEventListener('mouseup', () => { isDragging = false; });
+        canvas.addEventListener('mouseleave', () => { isDragging = false; });
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = ((e.clientX - rect.left) / rect.width) * 2.0 - 1.0;
+                mouseY = -(((e.clientY - rect.top) / rect.height) * 2.0 - 1.0);
+            }
+        });
+
+        // Configurar controles de UI
+        const maxBouncesSlider = document.getElementById('maxBounces');
+        const bouncesValue = document.getElementById('bouncesValue');
+        maxBouncesSlider.addEventListener('input', function() {
+            maxBounces = parseInt(this.value);
+            bouncesValue.textContent = maxBounces;
+        });
+
+        const ambientStrengthSlider = document.getElementById('ambientStrength');
+        const ambientValue = document.getElementById('ambientValue');
+        ambientStrengthSlider.addEventListener('input', function() {
+            ambientStrength = parseFloat(this.value);
+            ambientValue.textContent = ambientStrength.toFixed(2);
+        });
+
+        const shininessSlider = document.getElementById('shininess');
+        const shininessValue = document.getElementById('shininessValue');
+        shininessSlider.addEventListener('input', function() {
+            shininess = parseFloat(this.value);
+            shininessValue.textContent = shininess;
+        });
+
+        const light1Slider = document.getElementById('light1Intensity');
+        const light1Value = document.getElementById('light1Value');
+        light1Slider.addEventListener('input', function() {
+            light1Intensity = parseFloat(this.value);
+            light1Value.textContent = light1Intensity.toFixed(1);
+        });
+
+        const light2Slider = document.getElementById('light2Intensity');
+        const light2Value = document.getElementById('light2Value');
+        light2Slider.addEventListener('input', function() {
+            light2Intensity = parseFloat(this.value);
+            light2Value.textContent = light2Intensity.toFixed(1);
+        });
+
+        const animSpeedSlider = document.getElementById('animSpeed');
+        const speedValue = document.getElementById('speedValue');
+        animSpeedSlider.addEventListener('input', function() {
+            animSpeed = parseFloat(this.value);
+            speedValue.textContent = animSpeed.toFixed(1);
+        });
+
+        // Render loop
+        let startTime = Date.now();
+        function render() {
+            const time = ((Date.now() - startTime) / 1000.0) * animSpeed;
+
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+            gl.bindVertexArray(vao);
+
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            gl.uniform1f(timeLocation, time);
+            gl.uniform1i(maxBouncesLocation, maxBounces);
+            gl.uniform1f(ambientStrengthLocation, ambientStrength);
+            gl.uniform1f(shininessLocation, shininess);
+            gl.uniform1f(light1IntensityLocation, light1Intensity);
+            gl.uniform1f(light2IntensityLocation, light2Intensity);
+            gl.uniform2f(mouseLocation, mouseX, mouseY);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+    })();
+</script>
+
+</body>
+</html>
