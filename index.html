@@ -1,1083 +1,790 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>HW6 - Ray Tracing + Pingüinos (Jaqueline Garcia)</title>
-  <style>
-    body {
-      background:#0e1013;
-      color:#e8eef2;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      margin: 0;
-      padding: 20px;
-    }
-    h2 { color: #fff; margin: 10px 0; }
-    p { color: #b9c2cc; margin: 8px 0; }
-    .row { display:flex; gap:16px; align-items:flex-start; }
-    .panel { background:#14171b; border:1px solid #2a2f36; border-radius:10px; padding:12px; }
-    .panel h3 { margin:0 0 8px 0; font-size:16px; color:#fff; }
-    label { font-size:12px; color:#b9c2cc; display:block; margin-top:6px; }
-    button, select, input[type="color"], input[type="range"], input[type="checkbox"] {
-      background:#1a1f25; color:#e8eef2; border:1px solid #39424d;
-      border-radius:8px; padding:6px 8px;
-    }
-    button:hover { background:#232a32; cursor:pointer; }
-    canvas { border:1px solid #39424d; border-radius:10px; }
-    small { color:#9aa6b2; }
-    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
-    .value-display {
-      display: inline-block;
-      min-width: 35px;
-      color: #4a9eff;
-      font-weight: bold;
-    }
-    .section-title {
-      color: #4a9eff;
-      font-size: 14px;
-      font-weight: bold;
-      margin-top: 12px;
-      margin-bottom: 4px;
-      border-bottom: 1px solid #2a2f36;
-      padding-bottom: 4px;
-    }
-  </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>HW6 - Underwater Ray Tracing (Jaqueline Garcia)</title>
+    <style>
+        body {
+            margin: 0;
+            background: #0a1628;
+            color: #e0f2ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+        }
+        h2 {
+            color: #4fc3f7;
+            margin: 10px 0;
+            text-shadow: 0 0 10px rgba(79, 195, 247, 0.5);
+        }
+        p {
+            color: #b3d9ff;
+            margin: 8px 0;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .canvas-container {
+            display: flex;
+            flex-direction: column;
+        }
+        canvas {
+            border: 2px solid #1e88e5;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(30, 136, 229, 0.3);
+        }
+        .controls {
+            background: rgba(13, 27, 42, 0.9);
+            border: 1px solid #1e88e5;
+            border-radius: 10px;
+            padding: 20px;
+            min-width: 300px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        .controls h3 {
+            color: #4fc3f7;
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            border-bottom: 2px solid #1e88e5;
+            padding-bottom: 8px;
+        }
+        .controls label {
+            display: block;
+            margin: 12px 0 4px 0;
+            color: #b3d9ff;
+            font-size: 13px;
+        }
+        .controls input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+        .controls .value-display {
+            display: inline-block;
+            min-width: 45px;
+            color: #4fc3f7;
+            font-weight: bold;
+            float: right;
+        }
+        .section-divider {
+            border-top: 1px solid #1e4a6e;
+            margin: 15px 0;
+        }
+        small {
+            color: #7eb8e0;
+            font-size: 11px;
+        }
+    </style>
 </head>
 <body>
-  <h2>🐧 HW6 - Ray Tracing Híbrido con Pingüinos</h2>
-  <p>
-    <strong>Arrastra</strong> para rotar la cámara. <strong>Flechas y W/S</strong> para mover.
-    Combina ray tracing (esferas de cristal refractivas/reflectivas) con pingüinos animados.
-  </p>
 
-  <div class="row">
-    <div class="panel" style="min-width:320px;">
-      <h3>🎮 Controles de Pingüinos</h3>
-      <div class="grid2">
-        <button id="btnAdd">+ Agregar Pingüino</button>
-        <button id="btnRemove">– Quitar Pingüino</button>
-      </div>
-      <label>
-        Seleccionar Pingüino
-        <select id="selActor"></select>
-      </label>
-      <label>
-        Color del Cuerpo
-        <input id="colorBody" type="color" value="#1371d1" />
-      </label>
-      <label>
-        Color de Detalles (pecho/pico/patas)
-        <input id="colorAccent" type="color" value="#f59e0b" />
-      </label>
-      <div class="grid2" style="margin-top:8px; align-items:center;">
-        <label><input id="toggleWaddle" type="checkbox" checked /> Animar Pasos</label>
-        <label><input id="toggleFlap" type="checkbox" checked /> Animar Aleteo</label>
-      </div>
-      <label>
-        Velocidad de Animación
-        <input id="speed" type="range" min="0" max="2" value="1" step="0.01" />
-      </label>
-      <label>
-        Girar Base (°)
-        <input id="baseAngle" type="range" min="-180" max="180" value="0" />
-      </label>
-      <label>
-        Cabeza Yaw (°)
-        <input id="headYaw" type="range" min="-60" max="60" value="0" />
-      </label>
-      <label>
-        Cabeza Pitch (°)
-        <input id="headPitch" type="range" min="-30" max="30" value="0" />
-      </label>
-      <label>
-        Amplitud Aleteo (°)
-        <input id="flapAmp" type="range" min="0" max="45" value="5" />
-      </label>
+<h2>🌊 HW6 - Underwater Ray Tracing Scene</h2>
+<p>
+    <strong>Drag</strong> to rotate camera • <strong>Arrow keys & W/S</strong> to move<br>
+    <small>Featuring bubbles, pearls, and realistic underwater lighting with ray tracing</small>
+</p>
 
-      <div class="section-title">💡 Iluminación (Phong)</div>
-      <label>Ambiente (ka): <span class="value-display" id="kaVal">0.20</span>
-        <input id="ka" type="range" min="0" max="1" step="0.01" value="0.20">
-      </label>
-      <label>Difusa (kd): <span class="value-display" id="kdVal">0.80</span>
-        <input id="kd" type="range" min="0" max="1" step="0.01" value="0.80">
-      </label>
-      <label>Especular (ks): <span class="value-display" id="ksVal">0.40</span>
-        <input id="ks" type="range" min="0" max="1" step="0.01" value="0.40">
-      </label>
-      <label>Brillo: <span class="value-display" id="shinVal">64</span>
-        <input id="shininess" type="range" min="1" max="256" step="1" value="64">
-      </label>
-
-      <div class="section-title">🌈 Colores de Luz</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px;align-items:center;">
-        <span>Ambiente:</span>  <input id="ambColor"  type="color" value="#2a3a4a">
-        <span>Difusa:</span>  <input id="difColor"  type="color" value="#ffd89b">
-        <span>Especular:</span> <input id="speColor"  type="color" value="#ffffff">
-      </div>
-
-      <div class="section-title">💎 Ray Tracing</div>
-      <label>Rebotes Máximos: <span class="value-display" id="bouncesVal">4</span>
-        <input id="maxBounces" type="range" min="1" max="8" value="4" step="1">
-      </label>
-      <label>Intensidad RT: <span class="value-display" id="rtIntVal">0.6</span>
-        <input id="rtIntensity" type="range" min="0" max="1" value="0.6" step="0.05">
-      </label>
-
-      <div class="section-title">🌍 Posición de Luz (mundo)</div>
-      <label>X: <span class="value-display" id="lxVal">0.7</span>
-        <input id="lx" type="range" min="-10" max="10" step="0.1" value="0.7">
-      </label>
-      <label>Y: <span class="value-display" id="lyVal">2.6</span>
-        <input id="ly" type="range" min="-10" max="10" step="0.1" value="2.6">
-      </label>
-      <label>Z: <span class="value-display" id="lzVal">3.4</span>
-        <input id="lz" type="range" min="-10" max="10" step="0.1" value="3.4">
-      </label>
+<div class="container">
+    <div class="canvas-container">
+        <canvas id="glCanvas" width="900" height="700"></canvas>
     </div>
 
-    <div class="panel">
-      <canvas id="glcanvas" width="900" height="700"></canvas>
+    <div class="controls">
+        <h3>⚙️ Ray Tracing Controls</h3>
+
+        <label>
+            Max Bounces
+            <span class="value-display" id="bouncesValue">5</span>
+            <input type="range" id="maxBounces" min="1" max="8" value="5" step="1">
+        </label>
+
+        <label>
+            Ambient Strength
+            <span class="value-display" id="ambientValue">0.15</span>
+            <input type="range" id="ambientStrength" min="0" max="0.5" value="0.15" step="0.01">
+        </label>
+
+        <label>
+            Specular Shininess
+            <span class="value-display" id="shininessValue">80</span>
+            <input type="range" id="shininess" min="8" max="256" value="80" step="8">
+        </label>
+
+        <div class="section-divider"></div>
+        <h3>💡 Light Sources</h3>
+
+        <label>
+            Sunlight Intensity
+            <span class="value-display" id="light1Value">1.5</span>
+            <input type="range" id="light1Intensity" min="0" max="3" value="1.5" step="0.1">
+        </label>
+
+        <label>
+            Ambient Ocean Light
+            <span class="value-display" id="light2Value">0.7</span>
+            <input type="range" id="light2Intensity" min="0" max="2" value="0.7" step="0.1">
+        </label>
+
+        <div class="section-divider"></div>
+        <h3>🎬 Animation</h3>
+
+        <label>
+            Animation Speed
+            <span class="value-display" id="speedValue">1.0</span>
+            <input type="range" id="animSpeed" min="0" max="2" value="1.0" step="0.1">
+        </label>
+
+        <div class="section-divider"></div>
+        <small>
+            <strong>Scene Objects:</strong><br>
+            • 3 Bubbles (refractive)<br>
+            • 2 Pearls (reflective)<br>
+            • 1 Crystal cube (diffuse)<br>
+            • 2 Light sources<br>
+            • Sandy ocean floor
+        </small>
     </div>
-  </div>
+</div>
 
-<!-- ================= SHADERS RAY TRACING ================= -->
-<script id="vs_rt" type="x-shader/x-vertex">#version 300 es
-in vec2 aPos;
-void main() {
-  gl_Position = vec4(aPos, 0.0, 1.0);
-}
+<script id="vertex-shader" type="x-shader/x-vertex">#version 300 es
+    in vec2 position;
+    void main() {
+        gl_Position = vec4(position, 0.0, 1.0);
+    }
 </script>
 
-<script id="fs_rt" type="x-shader/x-fragment">#version 300 es
-precision highp float;
+<script id="fragment-shader" type="x-shader/x-fragment">#version 300 es
+    precision highp float;
 
-uniform float u_time;
-uniform vec2 u_resolution;
-uniform mat4 u_viewMatrix;
-uniform mat4 u_projMatrix;
-uniform int u_maxBounces;
-uniform vec3 u_lightPos;
-uniform float u_rtIntensity;
+    // Uniformes para animación y controles
+    uniform float u_time;
+    uniform vec2 u_resolution;
+    uniform int u_maxBounces;
+    uniform float u_ambientStrength;
+    uniform float u_shininess;
+    uniform float u_light1Intensity;
+    uniform float u_light2Intensity;
+    uniform vec2 u_mouse;
 
-out vec4 fragColor;
+    out vec4 fragColor;
 
-// Constantes de materiales
-const int MAT_DIFFUSE = 0;
-const int MAT_REFLECTIVE = 1;
-const int MAT_REFRACTIVE = 2;
+    // Constantes para tipos de materiales
+    const int MATERIAL_DIFFUSE = 0;
+    const int MATERIAL_REFLECTIVE = 1;
+    const int MATERIAL_REFRACTIVE = 2;
+    const float PI = 3.14159265359;
 
-// Estructura de rayo
-struct Ray {
-  vec3 origin;
-  vec3 direction;
-};
+    // Estructura de rayo
+    struct Ray {
+        vec3 origin;
+        vec3 direction;
+    };
 
-// Estructura de esfera
-struct Sphere {
-  vec3 center;
-  float radius;
-  vec3 color;
-  int material;
-  float reflectivity;
-  float refractiveIndex;
-};
+    // Estructura de esfera
+    struct Sphere {
+        vec3 center;
+        float radius;
+        vec3 color;
+        int material;
+        float reflectivity;
+        float refractiveIndex;
+    };
 
-// Estructura de intersección
-struct HitData {
-  bool hit;
-  float t;
-  vec3 point;
-  vec3 normal;
-  vec3 color;
-  int material;
-  float reflectivity;
-  float refractiveIndex;
-  bool frontFace;
-};
+    // Estructura para datos de intersección
+    struct HitData {
+        bool hit;
+        float t;
+        vec3 point;
+        vec3 normal;
+        vec3 color;
+        int material;
+        float reflectivity;
+        float refractiveIndex;
+        bool frontFace;
+    };
 
-// Escena de esferas
-Sphere spheres[5];
-Sphere lightSphere;
+    // Objetos de la escena - Tema submarino
+    Sphere spheres[6];
+    Sphere lightSphere1;
+    Sphere lightSphere2;
 
-// Inicializar escena de cristales flotantes
-void initScene(float time) {
-  // Luz (pequeña esfera brillante)
-  lightSphere = Sphere(
-    u_lightPos,
-    0.2,
-    vec3(1.0, 0.95, 0.8) * 8.0,
-    MAT_DIFFUSE,
-    0.0,
-    1.0
-  );
+    // Inicializar escena submarina
+    void initScene(float time) {
+        // Luz 1: Sol desde arriba (amarilla cálida)
+        lightSphere1 = Sphere(
+            vec3(sin(time * 0.3) * 1.5, 3.5, cos(time * 0.3) * 1.5 - 2.0),
+            0.4,
+            vec3(1.0, 0.95, 0.8) * 7.0,
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
 
-  // Esfera 1 - Cristal grande refractivo (levita y rota)
-  spheres[0] = Sphere(
-    vec3(sin(time * 0.5) * 1.2, 1.2 + sin(time * 0.8) * 0.3, cos(time * 0.5) * 1.2 - 2.0),
-    0.6,
-    vec3(0.88, 0.94, 1.0),
-    MAT_REFRACTIVE,
-    0.0,
-    1.5  // vidrio
-  );
+        // Luz 2: Luz ambiental submarina (azul fría)
+        lightSphere2 = Sphere(
+            vec3(cos(time * 0.4) * 1.2, 1.8, sin(time * 0.4) * 1.2 - 1.5),
+            0.3,
+            vec3(0.6, 0.85, 1.0) * 4.0,
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
 
-  // Esfera 2 - Espejo plateado
-  spheres[1] = Sphere(
-    vec3(cos(time * 0.6) * 0.9 + 1.0, 0.5, sin(time * 0.6) * 0.5 - 1.0),
-    0.45,
-    vec3(0.95, 0.96, 0.98),
-    MAT_REFLECTIVE,
-    0.92,
-    1.0
-  );
+        // Burbuja 1 - Grande flotando (refractiva como agua)
+        spheres[0] = Sphere(
+            vec3(sin(time * 0.4) * 0.8, 1.0 + sin(time * 0.6) * 0.4, cos(time * 0.4) * 0.6 - 1.8),
+            0.65,
+            vec3(0.92, 0.96, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.33  // Índice de refracción del agua
+        );
 
-  // Esfera 3 - Cristal mediano azul
-  spheres[2] = Sphere(
-    vec3(-1.3 + cos(time * 0.7) * 0.2, 0.8, -1.5 + sin(time * 0.7) * 0.2),
-    0.4,
-    vec3(0.85, 0.92, 1.0),
-    MAT_REFRACTIVE,
-    0.0,
-    1.45
-  );
+        // Perla 1 - Plateada brillante (reflectiva)
+        spheres[1] = Sphere(
+            vec3(cos(time * 0.5) * 0.9 + 0.8, 0.3, sin(time * 0.5) * 0.5 - 1.2),
+            0.5,
+            vec3(0.95, 0.93, 0.88),
+            MATERIAL_REFLECTIVE,
+            0.90,
+            1.0
+        );
 
-  // Esfera 4 - Cristal pequeño
-  spheres[3] = Sphere(
-    vec3(sin(time * 0.9) * 0.6, 1.5, cos(time * 0.9) * 0.4 - 0.8),
-    0.3,
-    vec3(0.9, 0.95, 1.0),
-    MAT_REFRACTIVE,
-    0.0,
-    1.4
-  );
+        // Cubo/Cristal - Difuso (aproximado como esfera)
+        spheres[2] = Sphere(
+            vec3(-1.2, -0.3 + sin(time * 0.8) * 0.15, -2.0),
+            0.55,
+            vec3(0.7, 0.8, 0.9),
+            MATERIAL_DIFFUSE,
+            0.0,
+            1.0
+        );
 
-  // Esfera 5 - Espejo dorado
-  spheres[4] = Sphere(
-    vec3(-0.5, 0.3 + sin(time * 1.2) * 0.2, -2.5),
-    0.35,
-    vec3(0.98, 0.95, 0.88),
-    MAT_REFLECTIVE,
-    0.88,
-    1.0
-  );
-}
+        // Burbuja 2 - Mediana flotando
+        spheres[3] = Sphere(
+            vec3(-0.6 + cos(time * 0.7) * 0.4, 1.5 + cos(time * 0.9) * 0.3, -1.0),
+            0.45,
+            vec3(0.90, 0.95, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.33
+        );
 
-// Intersección rayo-esfera
-bool intersectSphere(Ray ray, Sphere sphere, out float t) {
-  vec3 oc = ray.origin - sphere.center;
-  float a = dot(ray.direction, ray.direction);
-  float b = 2.0 * dot(oc, ray.direction);
-  float c = dot(oc, oc) - sphere.radius * sphere.radius;
-  float discriminant = b * b - 4.0 * a * c;
+        // Burbuja 3 - Pequeña flotando rápido
+        spheres[4] = Sphere(
+            vec3(sin(time * 1.1) * 0.5, 2.0 + sin(time * 1.3) * 0.5, cos(time * 1.1) * 0.4 - 0.8),
+            0.35,
+            vec3(0.88, 0.93, 1.0),
+            MATERIAL_REFRACTIVE,
+            0.0,
+            1.33
+        );
 
-  if (discriminant < 0.0) return false;
-
-  float sqrtd = sqrt(discriminant);
-  float t0 = (-b - sqrtd) / (2.0 * a);
-  float t1 = (-b + sqrtd) / (2.0 * a);
-
-  t = t0 > 0.001 ? t0 : t1;
-  return t > 0.001;
-}
-
-// Trazar escena
-HitData traceScene(Ray ray, bool includeLights) {
-  HitData closest;
-  closest.hit = false;
-  closest.t = 1e10;
-
-  // Luz
-  if (includeLights) {
-    float t;
-    if (intersectSphere(ray, lightSphere, t) && t < closest.t) {
-      closest.hit = true;
-      closest.t = t;
-      closest.point = ray.origin + ray.direction * t;
-      closest.normal = normalize(closest.point - lightSphere.center);
-      closest.color = lightSphere.color;
-      closest.material = lightSphere.material;
-      closest.reflectivity = 0.0;
-      closest.refractiveIndex = 1.0;
-      closest.frontFace = true;
-    }
-  }
-
-  // Esferas
-  for (int i = 0; i < 5; i++) {
-    float t;
-    if (intersectSphere(ray, spheres[i], t) && t < closest.t) {
-      closest.hit = true;
-      closest.t = t;
-      closest.point = ray.origin + ray.direction * t;
-      vec3 outwardNormal = normalize(closest.point - spheres[i].center);
-      closest.frontFace = dot(ray.direction, outwardNormal) < 0.0;
-      closest.normal = closest.frontFace ? outwardNormal : -outwardNormal;
-      closest.color = spheres[i].color;
-      closest.material = spheres[i].material;
-      closest.reflectivity = spheres[i].reflectivity;
-      closest.refractiveIndex = spheres[i].refractiveIndex;
-    }
-  }
-
-  return closest;
-}
-
-// Refracción
-vec3 refract2(vec3 I, vec3 N, float eta) {
-  float cosi = -dot(N, I);
-  float cost2 = 1.0 - eta * eta * (1.0 - cosi * cosi);
-  if (cost2 < 0.0) return vec3(0.0);
-  return eta * I + (eta * cosi - sqrt(cost2)) * N;
-}
-
-// Schlick
-float schlick(float cosine, float ref_idx) {
-  float r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
-  r0 = r0 * r0;
-  return r0 + (1.0 - r0) * pow(1.0 - cosine, 5.0);
-}
-
-// Trace principal
-vec3 trace(Ray ray, int maxDepth) {
-  vec3 color = vec3(0.0);
-  vec3 atten = vec3(1.0);
-
-  for (int depth = 0; depth < 8; depth++) {
-    if (depth >= maxDepth) break;
-
-    HitData lightHit = traceScene(ray, true);
-    if (lightHit.hit) {
-      bool isLight = length(lightHit.point - lightSphere.center) < lightSphere.radius + 0.01;
-      if (isLight) {
-        color += atten * lightHit.color * 0.3;
-        break;
-      }
+        // Perla 2 - Dorada (reflectiva)
+        spheres[5] = Sphere(
+            vec3(0.3 + sin(time * 0.6) * 0.3, -0.5, -2.5),
+            0.4,
+            vec3(0.98, 0.90, 0.70),
+            MATERIAL_REFLECTIVE,
+            0.85,
+            1.0
+        );
     }
 
-    HitData hit = traceScene(ray, false);
-    if (!hit.hit) {
-      // Fondo transparente/oscuro para que se vean los pingüinos
-      break;
-    }
+    // Intersección rayo-esfera
+    bool intersectSphere(Ray ray, Sphere sphere, out float t) {
+        vec3 oc = ray.origin - sphere.center;
+        float a = dot(ray.direction, ray.direction);
+        float b = 2.0 * dot(oc, ray.direction);
+        float c = dot(oc, oc) - sphere.radius * sphere.radius;
+        float discriminant = b * b - 4.0 * a * c;
 
-    vec3 lightDir = normalize(u_lightPos - hit.point);
-    float lightDist = length(u_lightPos - hit.point);
-
-    // Shadow ray
-    Ray shadowRay = Ray(hit.point + hit.normal * 0.001, lightDir);
-    HitData shadowHit = traceScene(shadowRay, false);
-    bool inShadow = shadowHit.hit && shadowHit.t < lightDist;
-
-    if (hit.material == MAT_DIFFUSE) {
-      vec3 ambient = 0.1 * hit.color;
-      vec3 directLight = vec3(0.0);
-      if (!inShadow) {
-        float diff = max(dot(hit.normal, lightDir), 0.0);
-        directLight = diff * hit.color * 0.5;
-      }
-      color += atten * (ambient + directLight);
-      break;
-
-    } else if (hit.material == MAT_REFRACTIVE) {
-      float eta = hit.frontFace ? (1.0 / hit.refractiveIndex) : hit.refractiveIndex;
-      float cosTheta = min(dot(-ray.direction, hit.normal), 1.0);
-      float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
-      bool tir = eta * sinTheta > 1.0;
-      float schlickVal = schlick(cosTheta, eta);
-
-      vec3 direction;
-      if (tir || schlickVal > 0.5) {
-        direction = reflect(ray.direction, hit.normal);
-      } else {
-        direction = refract2(ray.direction, hit.normal, eta);
-        if (length(direction) < 0.01) direction = reflect(ray.direction, hit.normal);
-      }
-
-      ray = Ray(hit.point + direction * 0.001, direction);
-      atten *= hit.color;
-
-    } else {
-      // Reflectivo
-      if (!inShadow) {
-        vec3 reflDir = reflect(-lightDir, hit.normal);
-        float spec = pow(max(dot(-ray.direction, reflDir), 0.0), 64.0);
-        color += atten * spec * 0.2;
-      }
-      atten *= hit.reflectivity * hit.color;
-      ray = Ray(hit.point + hit.normal * 0.001, reflect(ray.direction, hit.normal));
-    }
-
-    if (length(atten) < 0.01) break;
-  }
-
-  return color;
-}
-
-void main() {
-  initScene(u_time);
-
-  // Invertir la matriz de vista para obtener la cámara
-  mat4 invView = inverse(u_viewMatrix);
-  vec3 camPos = vec3(invView[3][0], invView[3][1], invView[3][2]);
-
-  // Coordenadas NDC
-  vec2 ndc = (gl_FragCoord.xy / u_resolution) * 2.0 - 1.0;
-
-  // Crear rayo desde la cámara
-  vec4 clipRay = vec4(ndc.x, ndc.y, -1.0, 1.0);
-  vec4 eyeRay = inverse(u_projMatrix) * clipRay;
-  eyeRay = vec4(eyeRay.xy, -1.0, 0.0);
-  vec3 worldRay = (invView * eyeRay).xyz;
-  vec3 rayDir = normalize(worldRay);
-
-  Ray ray = Ray(camPos, rayDir);
-  vec3 color = trace(ray, u_maxBounces);
-
-  // Gamma correction y ajuste de intensidad
-  color = pow(color, vec3(1.0 / 2.2)) * u_rtIntensity;
-
-  // Alpha para permitir ver los pingüinos detrás
-  float alpha = min(length(color) * 2.0, 1.0);
-
-  fragColor = vec4(color, alpha);
-}
-</script>
-
-<!-- ================= SHADERS PINGÜINOS (Phong) ================= -->
-<script id="vs" type="x-shader/x-vertex">#version 300 es
-in vec3 aPosition;
-in vec3 aNormal;
-in vec3 aColor;
-uniform mat4 uProjectionMatrix;
-uniform mat4 uModelViewMatrix;
-uniform mat4 uModelMatrix;
-uniform mat3 uNormalMatrix;
-out vec3 vColor;
-out vec3 vNormal;
-out vec3 vPosView;
-void main(){
-  vec4 posWorld = uModelMatrix * vec4(aPosition, 1.0);
-  vec4 posView  = uModelViewMatrix * posWorld;
-  gl_Position   = uProjectionMatrix * posView;
-  vPosView = posView.xyz;
-  vNormal  = normalize(uNormalMatrix * aNormal);
-  vColor   = aColor;
-}
-</script>
-
-<script id="fs" type="x-shader/x-fragment">#version 300 es
-precision mediump float;
-in vec3 vColor;
-in vec3 vNormal;
-in vec3 vPosView;
-out vec4 fragColor;
-uniform vec3 uLightPosView;
-uniform vec3 uViewPosView;
-uniform float uKa, uKd, uKs, uShininess;
-uniform vec3 uAmbientColor, uDiffuseColor, uSpecularColor;
-void main(){
-  vec3 N = normalize(vNormal);
-  vec3 L = normalize(uLightPosView - vPosView);
-  vec3 V = normalize(uViewPosView  - vPosView);
-  vec3 R = reflect(-L, N);
-  vec3 ambient = uKa * (uAmbientColor * vColor);
-  float NdotL  = max(dot(N, L), 0.0);
-  vec3 diffuse = uKd * NdotL * (uDiffuseColor * vColor);
-  float spec   = (NdotL > 0.0) ? pow(max(dot(R,V),0.0), uShininess) : 0.0;
-  vec3 specular= uKs * spec * uSpecularColor;
-  fragColor = vec4(ambient + diffuse + specular, 1.0);
-}
-</script>
-
-<!-- ====== Transformations (incluidas directamente) ====== -->
-<script>
-// Matrix functions
-// Perspective matrix
-function perspective(fov, aspect, near, far) {
-    const f = 1 / Math.tan(fov / 2);
-    const nf = 1 / (near - far);
-    return [f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0];
-}
-
-// Orthographic matrix
-function ortho(left, right, bottom, top, near, far) {
-    const lr = 1 / (left - right), bt = 1 / (bottom - top), nf = 1 / (near - far);
-    return [-2*lr,0,0,0, 0,-2*bt,0,0, 0,0,2*nf,0, (left+right)*lr,(top+bottom)*bt,(far+near)*nf,1];
-}
-
-// Identity matrix
-function mat4Identity() {
-    return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-}
-
-// Matrix translation
-function mat4Translate(matrix, translation) {
-    const result = new Float32Array(matrix);
-    result[12] = matrix[0] * translation[0] + matrix[4] * translation[1] + matrix[8] * translation[2] + matrix[12];
-    result[13] = matrix[1] * translation[0] + matrix[5] * translation[1] + matrix[9] * translation[2] + matrix[13];
-    result[14] = matrix[2] * translation[0] + matrix[6] * translation[1] + matrix[10] * translation[2] + matrix[14];
-    result[15] = matrix[3] * translation[0] + matrix[7] * translation[1] + matrix[11] * translation[2] + matrix[15];
-    return result;
-}
-
-// Matrix rotation around X axis
-function mat4RotateX(matrix, angle) {
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    const result = new Float32Array(matrix);
-
-    const mv1 = matrix[4], mv5 = matrix[5], mv9 = matrix[6], mv13 = matrix[7];
-    const mv2 = matrix[8], mv6 = matrix[9], mv10 = matrix[10], mv14 = matrix[11];
-
-    result[4] = mv1 * c + mv2 * s;
-    result[5] = mv5 * c + mv6 * s;
-    result[6] = mv9 * c + mv10 * s;
-    result[7] = mv13 * c + mv14 * s;
-    result[8] = mv2 * c - mv1 * s;
-    result[9] = mv6 * c - mv5 * s;
-    result[10] = mv10 * c - mv9 * s;
-    result[11] = mv14 * c - mv13 * s;
-
-    return result;
-}
-
-// Matrix rotation around Y axis
-function mat4RotateY(matrix, angle) {
-    const c = Math.cos(angle);
-    const s = Math.sin(angle);
-    const result = new Float32Array(matrix);
-
-    const mv0 = matrix[0], mv4 = matrix[1], mv8 = matrix[2], mv12 = matrix[3];
-    const mv2 = matrix[8], mv6 = matrix[9], mv10 = matrix[10], mv14 = matrix[11];
-
-    result[0] = mv0 * c - mv2 * s;
-    result[1] = mv4 * c - mv6 * s;
-    result[2] = mv8 * c - mv10 * s;
-    result[3] = mv12 * c - mv14 * s;
-    result[8] = mv0 * s + mv2 * c;
-    result[9] = mv4 * s + mv6 * c;
-    result[10] = mv8 * s + mv10 * c;
-    result[11] = mv12 * s + mv14 * c;
-
-    return result;
-}
-
-// Matrix multiplication
-function multiplyMat4(a, b) {
-    let r = new Float32Array(16);
-    for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
-        let sum = 0;
-        for (let k = 0; k < 4; k++) {
-            sum += a[k * 4 + i] * b[j * 4 + k];
+        if (discriminant < 0.0) {
+            return false;
         }
-        r[j * 4 + i] = sum;
-    }
-    return r;
-}
 
-function multiplyMat4Vec3(M, v){ // v as w=1
-    const x=v[0], y=v[1], z=v[2];
-    return [
-        M[0]*x + M[4]*y + M[8]*z + M[12],
-        M[1]*x + M[5]*y + M[9]*z + M[13],
-        M[2]*x + M[6]*y + M[10]*z + M[14],
-    ];
-}
-function mat3FromMat4(M){
-    return new Float32Array([
-        M[0], M[1], M[2],
-        M[4], M[5], M[6],
-        M[8], M[9], M[10],
-    ]);
-}
-function mat3InverseTranspose(m){
-    const a=m[0], b=m[1], c=m[2],
-            d=m[3], e=m[4], f=m[5],
-            g=m[6], h=m[7], i=m[8];
-    const A =   e*i - f*h;
-    const B = -(d*i - f*g);
-    const C =   d*h - e*g;
-    const D = -(b*i - c*h);
-    const E =   a*i - c*g;
-    const F = -(a*h - b*g);
-    const G =   b*f - c*e;
-    const H = -(a*f - c*d);
-    const I =   a*e - b*d;
-    let det = a*A + b*B + c*C;
-    if(Math.abs(det) < 1e-8) det = 1e-8;
-    const invT = new Float32Array([A, D, G, B, E, H, C, F, I]);
-    for(let k=0;k<9;k++) invT[k] /= det;
-    return invT;
-}
+        float sqrtd = sqrt(discriminant);
+        float t0 = (-b - sqrtd) / (2.0 * a);
+        float t1 = (-b + sqrtd) / (2.0 * a);
+
+        t = t0 > 0.001 ? t0 : t1;
+        return t > 0.001;
+    }
+
+    // Intersección con plano (piso arenoso)
+    bool intersectPlane(Ray ray, float y, out float t, out vec3 normal) {
+        if (abs(ray.direction.y) < 0.001) return false;
+
+        t = (y - ray.origin.y) / ray.direction.y;
+        normal = vec3(0.0, 1.0, 0.0);
+        return t > 0.001;
+    }
+
+    // Trazar escena buscando intersecciones
+    HitData traceScene(Ray ray, bool includeLightSpheres) {
+        HitData closest;
+        closest.hit = false;
+        closest.t = 1e10;
+
+        // Intersección con luces
+        if (includeLightSpheres) {
+            float t;
+            if (intersectSphere(ray, lightSphere1, t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    closest.normal = normalize(closest.point - lightSphere1.center);
+                    closest.color = lightSphere1.color;
+                    closest.material = lightSphere1.material;
+                    closest.reflectivity = lightSphere1.reflectivity;
+                    closest.refractiveIndex = lightSphere1.refractiveIndex;
+                    closest.frontFace = true;
+                }
+            }
+
+            if (intersectSphere(ray, lightSphere2, t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    closest.normal = normalize(closest.point - lightSphere2.center);
+                    closest.color = lightSphere2.color;
+                    closest.material = lightSphere2.material;
+                    closest.reflectivity = lightSphere2.reflectivity;
+                    closest.refractiveIndex = lightSphere2.refractiveIndex;
+                    closest.frontFace = true;
+                }
+            }
+        }
+
+        // Intersección con todas las esferas/geometrías
+        for (int i = 0; i < 6; i++) {
+            float t;
+            if (intersectSphere(ray, spheres[i], t)) {
+                if (t < closest.t) {
+                    closest.hit = true;
+                    closest.t = t;
+                    closest.point = ray.origin + ray.direction * t;
+                    vec3 outwardNormal = normalize(closest.point - spheres[i].center);
+                    closest.frontFace = dot(ray.direction, outwardNormal) < 0.0;
+                    closest.normal = closest.frontFace ? outwardNormal : -outwardNormal;
+                    closest.color = spheres[i].color;
+                    closest.material = spheres[i].material;
+                    closest.reflectivity = spheres[i].reflectivity;
+                    closest.refractiveIndex = spheres[i].refractiveIndex;
+                }
+            }
+        }
+
+        // Intersección con el piso (arena)
+        float planeT;
+        vec3 planeNormal;
+        if (intersectPlane(ray, -1.2, planeT, planeNormal)) {
+            if (planeT < closest.t) {
+                closest.hit = true;
+                closest.t = planeT;
+                closest.point = ray.origin + ray.direction * planeT;
+                closest.normal = planeNormal;
+
+                // Patrón de arena con textura ondulada
+                vec2 sandPos = closest.point.xz * 3.0;
+                float pattern = sin(sandPos.x * 2.0) * cos(sandPos.y * 2.0) * 0.1;
+                float checker = mod(floor(sandPos.x) + floor(sandPos.y), 2.0) * 0.05;
+
+                vec3 sandColor1 = vec3(0.76, 0.70, 0.50); // Arena clara
+                vec3 sandColor2 = vec3(0.65, 0.60, 0.45); // Arena oscura
+
+                closest.color = mix(sandColor1, sandColor2, pattern + checker);
+                closest.material = MATERIAL_DIFFUSE;
+                closest.reflectivity = 0.1;
+                closest.refractiveIndex = 1.0;
+                closest.frontFace = true;
+            }
+        }
+
+        return closest;
+    }
+
+    // Refracción usando ley de Snell
+    vec3 refraction(vec3 I, vec3 N, float eta) {
+        float cosi = -dot(N, I);
+        float cost2 = 1.0 - eta * eta * (1.0 - cosi * cosi);
+
+        if (cost2 < 0.0) {
+            return vec3(0.0);
+        }
+
+        return eta * I + (eta * cosi - sqrt(cost2)) * N;
+    }
+
+    // Aproximación de Schlick para Fresnel
+    float schlick(float cosine, float ref_idx) {
+        float r0 = (1.0 - ref_idx) / (1.0 + ref_idx);
+        r0 = r0 * r0;
+        return r0 + (1.0 - r0) * pow((1.0 - cosine), 5.0);
+    }
+
+    // Función principal de trazado de rayos
+    vec3 trace(Ray ray, int maxDepth) {
+        vec3 color = vec3(0.0);
+        vec3 attenuation = vec3(1.0);
+
+        for (int depth = 0; depth < 8; depth++) {
+            if (depth >= maxDepth) break;
+
+            // Verificar si golpeamos una luz directamente
+            HitData lightHit = traceScene(ray, true);
+            if (lightHit.hit && lightHit.t < 1e9) {
+                bool isLight = (length(lightHit.point - lightSphere1.center) < lightSphere1.radius + 0.01) ||
+                               (length(lightHit.point - lightSphere2.center) < lightSphere2.radius + 0.01);
+                if (isLight) {
+                    color += attenuation * lightHit.color * 0.3;
+                    break;
+                }
+            }
+
+            HitData hit = traceScene(ray, false);
+
+            if (!hit.hit) {
+                // Fondo degradado submarino (de azul oscuro abajo a azul claro arriba)
+                float t = ray.direction.y * 0.5 + 0.5;
+                vec3 oceanBottom = vec3(0.05, 0.15, 0.30);  // Azul oscuro profundo
+                vec3 oceanSurface = vec3(0.20, 0.50, 0.75); // Azul claro superficie
+                color += attenuation * mix(oceanBottom, oceanSurface, t) * 0.5;
+                break;
+            }
+
+            // Calcular iluminación de ambas fuentes de luz
+            vec3 totalDirectLight = vec3(0.0);
+
+            // Luz 1 (sol)
+            vec3 lightDir1 = normalize(lightSphere1.center - hit.point);
+            float lightDist1 = length(lightSphere1.center - hit.point);
+
+            // Shadow ray para luz 1
+            Ray shadowRay1 = Ray(hit.point + hit.normal * 0.001, lightDir1);
+            HitData shadowHit1 = traceScene(shadowRay1, false);
+            bool inShadow1 = shadowHit1.hit && shadowHit1.t < lightDist1;
+
+            // Luz 2 (ambiental submarina)
+            vec3 lightDir2 = normalize(lightSphere2.center - hit.point);
+            float lightDist2 = length(lightSphere2.center - hit.point);
+
+            // Shadow ray para luz 2
+            Ray shadowRay2 = Ray(hit.point + hit.normal * 0.001, lightDir2);
+            HitData shadowHit2 = traceScene(shadowRay2, false);
+            bool inShadow2 = shadowHit2.hit && shadowHit2.t < lightDist2;
+
+            // Material difuso - Modelo de Phong
+            if (hit.material == MATERIAL_DIFFUSE) {
+                vec3 ambientLight = u_ambientStrength * hit.color;
+
+                // Contribución de luz 1 (sol)
+                if (!inShadow1) {
+                    float diff1 = max(dot(hit.normal, lightDir1), 0.0);
+                    vec3 viewDir = normalize(-ray.direction);
+                    vec3 reflectDir1 = reflect(-lightDir1, hit.normal);
+                    float spec1 = pow(max(dot(viewDir, reflectDir1), 0.0), u_shininess);
+                    float attenFactor1 = 1.0 / (1.0 + 0.09 * lightDist1 + 0.032 * lightDist1 * lightDist1);
+                    totalDirectLight += (diff1 * hit.color + spec1 * vec3(1.0, 0.95, 0.9)) *
+                                       lightSphere1.color * 0.15 * attenFactor1 * u_light1Intensity;
+                }
+
+                // Contribución de luz 2 (ambiental)
+                if (!inShadow2) {
+                    float diff2 = max(dot(hit.normal, lightDir2), 0.0);
+                    vec3 viewDir = normalize(-ray.direction);
+                    vec3 reflectDir2 = reflect(-lightDir2, hit.normal);
+                    float spec2 = pow(max(dot(viewDir, reflectDir2), 0.0), u_shininess);
+                    float attenFactor2 = 1.0 / (1.0 + 0.09 * lightDist2 + 0.032 * lightDist2 * lightDist2);
+                    totalDirectLight += (diff2 * hit.color + spec2 * vec3(0.9, 0.95, 1.0)) *
+                                       lightSphere2.color * 0.15 * attenFactor2 * u_light2Intensity;
+                }
+
+                vec3 lighting = totalDirectLight + ambientLight;
+                color += attenuation * lighting;
+
+                // Si tiene algo de reflectividad, continuar
+                if (hit.reflectivity > 0.01) {
+                    attenuation *= hit.reflectivity * 0.4;
+                    ray = Ray(hit.point + hit.normal * 0.001, reflect(ray.direction, hit.normal));
+                } else {
+                    break;
+                }
+
+            } else if (hit.material == MATERIAL_REFRACTIVE) {
+                // Material refractivo (burbujas de agua)
+                float eta = hit.frontFace ? (1.0 / hit.refractiveIndex) : hit.refractiveIndex;
+                float cosTheta = min(dot(-ray.direction, hit.normal), 1.0);
+                float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+                bool totalInternalReflection = eta * sinTheta > 1.0;
+                float schlickValue = schlick(cosTheta, eta);
+
+                vec3 direction;
+                if (totalInternalReflection || schlickValue > 0.5) {
+                    // Reflexión
+                    direction = reflect(ray.direction, hit.normal);
+                } else {
+                    // Refracción
+                    direction = refraction(ray.direction, hit.normal, eta);
+                    if (length(direction) < 0.01) {
+                        direction = reflect(ray.direction, hit.normal);
+                    }
+                }
+
+                ray = Ray(hit.point + direction * 0.001, direction);
+                attenuation *= hit.color * 0.98;
+
+            } else {
+                // Material reflectivo (perlas)
+                if (!inShadow1) {
+                    vec3 reflectDir1 = reflect(-lightDir1, hit.normal);
+                    float spec1 = pow(max(dot(-ray.direction, reflectDir1), 0.0), 128.0);
+                    totalDirectLight += spec1 * lightSphere1.color * 0.1 * u_light1Intensity;
+                }
+                if (!inShadow2) {
+                    vec3 reflectDir2 = reflect(-lightDir2, hit.normal);
+                    float spec2 = pow(max(dot(-ray.direction, reflectDir2), 0.0), 128.0);
+                    totalDirectLight += spec2 * lightSphere2.color * 0.1 * u_light2Intensity;
+                }
+
+                color += attenuation * totalDirectLight;
+                attenuation *= hit.reflectivity * hit.color;
+                ray = Ray(hit.point + hit.normal * 0.001, reflect(ray.direction, hit.normal));
+            }
+
+            // Terminar si la atenuación es muy baja
+            if (length(attenuation) < 0.01) break;
+        }
+
+        return color;
+    }
+
+    void main() {
+        initScene(u_time);
+
+        // Coordenadas UV centradas
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / u_resolution.y;
+
+        // Configurar cámara con rotación del mouse
+        float camRotY = u_mouse.x * 0.5;
+        float camRotX = u_mouse.y * 0.3;
+
+        vec3 origin = vec3(
+            sin(camRotY) * 4.0,
+            1.2 + camRotX * 1.5,
+            cos(camRotY) * 4.0
+        );
+
+        vec3 lookAt = vec3(0.0, 0.3, -1.5);
+        vec3 forward = normalize(lookAt - origin);
+        vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+        vec3 up = cross(forward, right);
+
+        vec3 direction = normalize(forward + uv.x * right * 0.8 + uv.y * up * 0.8);
+
+        // Crear y trazar el rayo
+        Ray ray = Ray(origin, direction);
+        vec3 color = trace(ray, u_maxBounces);
+
+        // Corrección gamma
+        color = pow(color, vec3(1.0 / 2.2));
+
+        fragColor = vec4(color, 1.0);
+    }
 </script>
 
 <script>
-// ============ HELPER FUNCTIONS ============
-if (typeof mat4Scale !== 'function') {
-  function mat4Scale(m, s){
-    const r = new Float32Array(m);
-    r[0]*=s[0]; r[1]*=s[0]; r[2]*=s[0]; r[3]*=s[0];
-    r[4]*=s[1]; r[5]*=s[1]; r[6]*=s[1]; r[7]*=s[1];
-    r[8]*=s[2]; r[9]*=s[2]; r[10]*=s[2]; r[11]*=s[2];
-    return r;
-  }
-}
+    (function() {
+        const canvas = document.getElementById('glCanvas');
+        const gl = canvas.getContext('webgl2');
 
-if (typeof mat4RotateZ !== 'function') {
-  function mat4RotateZ(m, a){
-    const c = Math.cos(a), s = Math.sin(a);
-    const r = new Float32Array(m);
-    const m0=m[0], m4=m[4], m8=m[8],  m12=m[12];
-    const m1=m[1], m5=m[5], m9=m[9],  m13=m[13];
-    r[0] =  c*m0 + s*m1; r[4] =  c*m4 + s*m5; r[8] =  c*m8 + s*m9; r[12]=  c*m12 + s*m13;
-    r[1] =  c*m1 - s*m0; r[5] =  c*m5 - s*m4; r[9] =  c*m9 - s*m8; r[13]=  c*m13 - s*m12;
-    return r;
-  }
-}
+        if (!gl) {
+            alert('WebGL 2 is not supported in this browser');
+            throw new Error('WebGL 2 not supported');
+        }
 
-function hexToRGB3(h){
-  return [
-    parseInt(h.slice(1,3),16)/255,
-    parseInt(h.slice(3,5),16)/255,
-    parseInt(h.slice(5,7),16)/255
-  ];
-}
+        // Compilar shaders
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
 
-function compileShader(gl, type, src){
-  const sh = gl.createShader(type);
-  gl.shaderSource(sh, src);
-  gl.compileShader(sh);
-  if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
-    throw new Error(gl.getShaderInfoLog(sh));
-  return sh;
-}
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+                throw new Error(gl.getShaderInfoLog(shader));
+            }
 
-function createProgramFromDOM(gl, vsId, fsId){
-  const vs = compileShader(gl, gl.VERTEX_SHADER,   document.getElementById(vsId).textContent);
-  const fs = compileShader(gl, gl.FRAGMENT_SHADER, document.getElementById(fsId).textContent);
-  const prog = gl.createProgram();
-  gl.attachShader(prog, vs); gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  if(!gl.getProgramParameter(prog, gl.LINK_STATUS))
-    throw new Error(gl.getProgramInfoLog(prog));
-  return prog;
-}
+            return shader;
+        }
 
-// ============ INIT GL ============
-const canvas = document.getElementById('glcanvas');
-const gl = canvas.getContext('webgl2');
-if(!gl) { alert('WebGL2 no soportado'); throw new Error('No WebGL2'); }
+        function createProgram(gl, vsSource, fsSource) {
+            const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+            const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+            const prog = gl.createProgram();
+            gl.attachShader(prog, vs);
+            gl.attachShader(prog, fs);
+            gl.linkProgram(prog);
 
-gl.enable(gl.DEPTH_TEST);
-gl.enable(gl.BLEND);
-gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+                throw new Error(gl.getProgramInfoLog(prog));
+            }
 
-// Cámara
-let cam = { x:0, y:0, z:-12, rotX:0, rotY:0 };
-let dragging=false, mx=0, my=0;
-canvas.addEventListener('mousedown', e=>{dragging=true; mx=e.clientX; my=e.clientY;});
-canvas.addEventListener('mouseup', ()=>dragging=false);
-canvas.addEventListener('mousemove', e=>{
-  if(!dragging) return;
-  const dx=e.clientX-mx, dy=e.clientY-my; mx=e.clientX; my=e.clientY;
-  cam.rotY += dx*0.01; cam.rotX += dy*0.01;
-});
-document.addEventListener('keydown', e=>{
-  const s=0.35;
-  if(e.key==='ArrowUp')    cam.y -= s;
-  if(e.key==='ArrowDown')  cam.y += s;
-  if(e.key==='ArrowLeft')  cam.x += s;
-  if(e.key==='ArrowRight') cam.x -= s;
-  if(e.key==='w')          cam.z += s;
-  if(e.key==='s')          cam.z -= s;
-});
+            return prog;
+        }
 
-const proj = perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 100);
-function buildView(){
-  let M = mat4Identity();
-  M = mat4Translate(M,[cam.x, cam.y, cam.z]);
-  M = mat4RotateX(M, cam.rotX);
-  M = mat4RotateY(M, cam.rotY);
-  return M;
-}
+        const vertexShaderSource = document.getElementById('vertex-shader').textContent;
+        const fragmentShaderSource = document.getElementById('fragment-shader').textContent;
 
-// ============ PROGRAM RAY TRACING ============
-const programRT = createProgramFromDOM(gl,'vs_rt','fs_rt');
-const aPosRT = gl.getAttribLocation(programRT,'aPos');
-const uTimeRT = gl.getUniformLocation(programRT,'u_time');
-const uResRT = gl.getUniformLocation(programRT,'u_resolution');
-const uViewRT = gl.getUniformLocation(programRT,'u_viewMatrix');
-const uProjRT = gl.getUniformLocation(programRT,'u_projMatrix');
-const uBouncesRT = gl.getUniformLocation(programRT,'u_maxBounces');
-const uLightPosRT = gl.getUniformLocation(programRT,'u_lightPos');
-const uRTInt = gl.getUniformLocation(programRT,'u_rtIntensity');
+        const program = createProgram(gl, vertexShaderSource, fragmentShaderSource);
 
-// Quad de pantalla completa para RT
-const quadVerts = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
-const quadVBO = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
-gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+        // Obtener ubicaciones de atributos y uniformes
+        const positionLocation = gl.getAttribLocation(program, 'position');
+        const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
+        const timeLocation = gl.getUniformLocation(program, 'u_time');
+        const maxBouncesLocation = gl.getUniformLocation(program, 'u_maxBounces');
+        const ambientStrengthLocation = gl.getUniformLocation(program, 'u_ambientStrength');
+        const shininessLocation = gl.getUniformLocation(program, 'u_shininess');
+        const light1IntensityLocation = gl.getUniformLocation(program, 'u_light1Intensity');
+        const light2IntensityLocation = gl.getUniformLocation(program, 'u_light2Intensity');
+        const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
 
-// ============ PROGRAM PINGÜINOS ============
-const program = createProgramFromDOM(gl,'vs','fs');
-gl.useProgram(program);
-const aPosition = gl.getAttribLocation(program,'aPosition');
-const aNormal   = gl.getAttribLocation(program,'aNormal');
-const aColor    = gl.getAttribLocation(program,'aColor');
-const uPM       = gl.getUniformLocation(program,'uProjectionMatrix');
-const uMVM      = gl.getUniformLocation(program,'uModelViewMatrix');
-const uMM       = gl.getUniformLocation(program,'uModelMatrix');
-const uNM       = gl.getUniformLocation(program,'uNormalMatrix');
-const uLightPosView = gl.getUniformLocation(program,'uLightPosView');
-const uViewPosView  = gl.getUniformLocation(program,'uViewPosView');
-const uKa = gl.getUniformLocation(program,'uKa');
-const uKd = gl.getUniformLocation(program,'uKd');
-const uKs = gl.getUniformLocation(program,'uKs');
-const uShininess = gl.getUniformLocation(program,'uShininess');
-const uAmbientColor = gl.getUniformLocation(program,'uAmbientColor');
-const uDiffuseColor = gl.getUniformLocation(program,'uDiffuseColor');
-const uSpecularColor= gl.getUniformLocation(program,'uSpecularColor');
+        // Crear geometría de pantalla completa
+        const positions = new Float32Array([
+            -1, -1,
+            1, -1,
+            -1, 1,
+            1, 1
+        ]);
 
-// ============ PENGUIN GEOMETRY ============
-function ensurePerVertexColors(positions, colors){
-  const n=positions.length/3;
-  if(colors && colors.length===n*3) return colors;
-  let base=[1,1,1];
-  if(colors && colors.length===3) base=[colors[0],colors[1],colors[2]];
-  const out=new Float32Array(n*3);
-  for(let i=0;i<n;i++){ out[i*3]=base[0]; out[i*3+1]=base[1]; out[i*3+2]=base[2]; }
-  return out;
-}
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 
-function computeFlatNormals(positions, indices){
-  const n=positions.length/3, normals=new Float32Array(n*3);
-  for(let i=0;i<indices.length;i+=3){
-    const ia=indices[i]*3, ib=indices[i+1]*3, ic=indices[i+2]*3;
-    const ax=positions[ia], ay=positions[ia+1], az=positions[ia+2];
-    const bx=positions[ib], by=positions[ib+1], bz=positions[ib+2];
-    const cx=positions[ic], cy=positions[ic+1], cz=positions[ic+2];
-    const e1x=bx-ax, e1y=by-ay, e1z=bz-az;
-    const e2x=cx-ax, e2y=cy-ay, e2z=cz-az;
-    const nx=e1y*e2z - e1z*e2y, ny=e1z*e2x - e1x*e2z, nz=e1x*e2y - e1y*e2x;
-    normals[ia]+=nx; normals[ia+1]+=ny; normals[ia+2]+=nz;
-    normals[ib]+=nx; normals[ib+1]+=ny; normals[ib+2]+=nz;
-    normals[ic]+=nx; normals[ic+1]+=ny; normals[ic+2]+=nz;
-  }
-  for(let v=0;v<n;v++){
-    const i=v*3, nx=normals[i], ny=normals[i+1], nz=normals[i+2];
-    const len=Math.hypot(nx,ny,nz)||1;
-    normals[i]=nx/len; normals[i+1]=ny/len; normals[i+2]=nz/len;
-  }
-  return normals;
-}
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-class Mesh{
-  constructor(geom){
-    if(!(geom.positions instanceof Float32Array)) throw new Error('positions debe ser Float32Array');
-    if(!(geom.indices instanceof Uint16Array || geom.indices instanceof Uint32Array)) throw new Error('indices debe ser Uint16Array/Uint32Array');
-    let colors = ensurePerVertexColors(geom.positions, geom.colors);
-    let normals= geom.normals;
-    if(!(normals instanceof Float32Array) || normals.length!==geom.positions.length){
-      normals = computeFlatNormals(geom.positions, geom.indices);
-    }
-    this.vbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.vbo); gl.bufferData(gl.ARRAY_BUFFER,geom.positions,gl.STATIC_DRAW);
-    this.cbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.cbo); gl.bufferData(gl.ARRAY_BUFFER,colors,gl.STATIC_DRAW);
-    this.nbo=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.nbo); gl.bufferData(gl.ARRAY_BUFFER,normals,gl.STATIC_DRAW);
-    this.ibo=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ibo); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,geom.indices,gl.STATIC_DRAW);
-    this.count=geom.indices.length; this.indexType=(geom.indices instanceof Uint32Array)? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
-  }
-  draw(modelMatrix){
-    gl.uniformMatrix4fv(uMM,false,modelMatrix);
-    const mv=multiplyMat4(window._currentView, modelMatrix);
-    const nm=mat3InverseTranspose(mat3FromMat4(mv));
-    gl.uniformMatrix3fv(uNM,false,nm);
-    gl.bindBuffer(gl.ARRAY_BUFFER,this.vbo); gl.enableVertexAttribArray(aPosition); gl.vertexAttribPointer(aPosition,3,gl.FLOAT,false,0,0);
-    gl.bindBuffer(gl.ARRAY_BUFFER,this.cbo); gl.enableVertexAttribArray(aColor);    gl.vertexAttribPointer(aColor,   3,gl.FLOAT,false,0,0);
-    gl.bindBuffer(gl.ARRAY_BUFFER,this.nbo); gl.enableVertexAttribArray(aNormal);   gl.vertexAttribPointer(aNormal,  3,gl.FLOAT,false,0,0);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,this.ibo);
-    gl.drawElements(gl.TRIANGLES,this.count,this.indexType,0);
-  }
-}
+        // Variables de control
+        let maxBounces = 5;
+        let ambientStrength = 0.15;
+        let shininess = 80.0;
+        let light1Intensity = 1.5;
+        let light2Intensity = 0.7;
+        let animSpeed = 1.0;
 
-class Node{
-  constructor({mesh=null, local=mat4Identity(), children=[]}={}){
-    this.mesh=mesh; this.local=local; this.children=children; this._world=mat4Identity();
-  }
-}
+        // Mouse tracking
+        let mouseX = 0.0;
+        let mouseY = 0.0;
+        let isDragging = false;
 
-function dfsDraw(node, parentWorld){
-  const world=multiplyMat4(parentWorld,node.local);
-  node._world=world;
-  if(node.mesh) node.mesh.draw(world);
-  for(const c of node.children) dfsDraw(c, world);
-}
+        canvas.addEventListener('mousedown', () => { isDragging = true; });
+        canvas.addEventListener('mouseup', () => { isDragging = false; });
+        canvas.addEventListener('mouseleave', () => { isDragging = false; });
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = ((e.clientX - rect.left) / rect.width) * 2.0 - 1.0;
+                mouseY = -(((e.clientY - rect.top) / rect.height) * 2.0 - 1.0);
+            }
+        });
 
-function makeSphere(rad=0.5, latSeg=16, lonSeg=16, color=[0.9,0.9,0.9]){
-  const pos=[], col=[], ind=[], nor=[];
-  for(let y=0;y<=latSeg;y++){
-    const v=y/latSeg; const theta=v*Math.PI;
-    for(let x=0;x<=lonSeg;x++){
-      const u=x/lonSeg; const phi=u*2*Math.PI;
-      const sx=Math.sin(theta)*Math.cos(phi);
-      const sy=Math.cos(theta);
-      const sz=Math.sin(theta)*Math.sin(phi);
-      pos.push(rad*sx, rad*sy, rad*sz);
-      col.push(color[0],color[1],color[2]);
-      nor.push(sx,sy,sz);
-    }
-  }
-  for(let y=0;y<latSeg;y++){
-    for(let x=0;x<lonSeg;x++){
-      const i=y*(lonSeg+1)+x; ind.push(i,i+lonSeg+1,i+1, i+1,i+lonSeg+1,i+lonSeg+2);
-    }
-  }
-  return {
-    positions:new Float32Array(pos), colors:new Float32Array(col),
-    normals:new Float32Array(nor), indices:new Uint16Array(ind)
-  };
-}
+        // Keyboard camera controls
+        const keys = {};
+        let camPosX = 0, camPosY = 0, camPosZ = 0;
 
-function makeCone(r=0.12,h=0.28,seg=20,color=[0.96,0.62,0.05]){
-  const pos=[],col=[],ind=[],nor=[]; const half=h*0.5; const apex=[0,half,0];
-  for(let i=0;i<=seg;i++){
-    const a=i/seg*2*Math.PI; const x=Math.cos(a)*r, z=Math.sin(a)*r;
-    pos.push(x,-half,z); col.push(...color);
-    const nx=x/r, nz=z/r, ny=r/h; const len=Math.hypot(nx,ny,nz);
-    nor.push(nx/len,ny/len,nz/len);
-  }
-  const apexIdx=pos.length/3; pos.push(...apex); col.push(...color); nor.push(0,1,0);
-  for(let i=0;i<seg;i++){ ind.push(i,i+1,apexIdx); }
-  const cIdx=pos.length/3; pos.push(0,-half,0); col.push(...color); nor.push(0,-1,0);
-  for(let i=0;i<=seg;i++){ const a=i/seg*2*Math.PI; pos.push(Math.cos(a)*r,-half,Math.sin(a)*r); col.push(...color); nor.push(0,-1,0); }
-  for(let i=1;i<=seg;i++){ ind.push(cIdx, cIdx+i, cIdx+i+1); }
-  return { positions:new Float32Array(pos), colors:new Float32Array(col), normals:new Float32Array(nor), indices:new Uint16Array(ind) };
-}
+        document.addEventListener('keydown', (e) => { keys[e.key] = true; });
+        document.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
-function makeTorus(R=0.18,r=0.07,segR=24,segr=16,color=[0.96,0.62,0.05]){
-  const pos=[],col=[],nor=[],ind=[];
-  for(let i=0;i<=segR;i++){
-    const u=i/segR*2*Math.PI, cu=Math.cos(u), su=Math.sin(u);
-    for(let j=0;j<=segr;j++){
-      const v=j/segr*2*Math.PI, cv=Math.cos(v), sv=Math.sin(v);
-      const x=(R+r*cv)*cu, y=r*sv, z=(R+r*cv)*su;
-      pos.push(x,y,z); col.push(...color); nor.push(cu*cv,sv,su*cv);
-    }
-  }
-  const row=segr+1;
-  for(let i=0;i<segR;i++){
-    for(let j=0;j<segr;j++){
-      const a=i*row+j,b=a+row;
-      ind.push(a,b,a+1, a+1,b,b+1);
-    }
-  }
-  return { positions:new Float32Array(pos), colors:new Float32Array(col), normals:new Float32Array(nor), indices:new Uint16Array(ind) };
-}
+        function updateCameraFromKeys() {
+            const speed = 0.05;
+            if (keys['ArrowUp']) camPosY += speed;
+            if (keys['ArrowDown']) camPosY -= speed;
+            if (keys['ArrowLeft']) camPosX += speed;
+            if (keys['ArrowRight']) camPosX -= speed;
+            if (keys['w'] || keys['W']) camPosZ += speed;
+            if (keys['s'] || keys['S']) camPosZ -= speed;
+        }
 
-class Penguin{
-  constructor({bodyColor=[0.04,0.12,0.29], accentColor=[0.96,0.62,0.05]}={}){
-    this.bodyColor=bodyColor; this.accentColor=accentColor;
-    this.mBody = new Mesh(makeSphere(0.7,22,22,this.bodyColor));
-    this.mHead = new Mesh(makeSphere(0.45,20,20,this.bodyColor));
-    this.mBelly= new Mesh(makeSphere(0.55,20,20,[0.95,0.95,0.95]));
-    this.mBeak = new Mesh(makeCone(0.12,0.28,20,this.accentColor));
-    this.mWing = new Mesh(makeCone(0.14,0.6,20,this.bodyColor));
-    this.mEye  = new Mesh(makeSphere(0.07,14,14,[0.05,0.05,0.05]));
-    this.mFoot = new Mesh(makeTorus(0.18,0.07,24,16,this.accentColor));
-    this.baseAngle=0; this.headYaw=0; this.headPitch=0; this.flapPhase=0; this.flapAmp=35*Math.PI/180;
-    this.root=new Node({local:mat4Identity(),children:[]});
-    this.nBase=new Node({local:mat4Identity(),children:[]});
-    let Tbody=mat4Translate(mat4Identity(),[0,0.85,0]); this.nBody=new Node({mesh:this.mBody, local:Tbody, children:[]});
-    let Tbelly=mat4Translate(mat4Identity(),[0,0.85,0.25]); this.nBelly=new Node({mesh:this.mBelly, local:Tbelly, children:[]});
-    let Thead=mat4Translate(mat4Identity(),[0,1.6,0]); this.nHead=new Node({mesh:this.mHead, local:Thead, children:[]});
-    let Tbeak=mat4Translate(mat4Identity(),[0,0.0,0.38]); this.nBeak=new Node({mesh:this.mBeak, local:Tbeak, children:[]});
-    let TeyeL=mat4Translate(mat4Identity(),[-0.16,0.06,0.34]); this.nEyeL=new Node({mesh:this.mEye, local:TeyeL, children:[]});
-    let TeyeR=mat4Translate(mat4Identity(),[ 0.16,0.06,0.34]); this.nEyeR=new Node({mesh:this.mEye, local:TeyeR, children:[]});
-    let TwingL=mat4Translate(mat4Identity(),[-1,1,0]); this.nWingL=new Node({mesh:this.mWing, local:TwingL, children:[]});
-    let TwingR=mat4Translate(mat4Identity(),[ 1,1,0]); this.nWingR=new Node({mesh:this.mWing, local:TwingR, children:[]});
-    let TfootL=mat4Translate(mat4Identity(),[-0.28,0.32,0.18]); this.nFootL=new Node({mesh:this.mFoot, local:TfootL, children:[]});
-    let TfootR=mat4Translate(mat4Identity(),[ 0.28,0.32,0.18]); this.nFootR=new Node({mesh:this.mFoot, local:TfootR, children:[]});
-    this.root.children.push(this.nBase);
-    this.nBase.children.push(this.nBody,this.nWingL,this.nWingR,this.nFootL,this.nFootR,this.nHead,this.nBelly);
-    this.nHead.children.push(this.nBeak,this.nEyeL,this.nEyeR);
-    this.position={x:0,z:0};
-  }
-  buildLocal(){
-    let R=mat4Identity(); R=mat4Translate(R,[this.position.x,0,this.position.z]); this.root.local=R;
-    this.nBase.local = mat4RotateY(mat4Identity(), this.baseAngle);
-    let Thead=mat4Translate(mat4Identity(),[0,1.6,0]); Thead=mat4RotateY(Thead,this.headYaw); Thead=mat4RotateX(Thead,this.headPitch); this.nHead.local=Thead;
-  }
-  draw(world){ this.buildLocal(); dfsDraw(this.root, world); }
-}
+        // Configurar controles de UI
+        const maxBouncesSlider = document.getElementById('maxBounces');
+        const bouncesValue = document.getElementById('bouncesValue');
+        maxBouncesSlider.addEventListener('input', function() {
+            maxBounces = parseInt(this.value);
+            bouncesValue.textContent = maxBounces;
+        });
 
-// ============ UI CONTROLS ============
-const actors=[];
-const selActor=document.getElementById('selActor');
-const btnAdd=document.getElementById('btnAdd');
-const btnRemove=document.getElementById('btnRemove');
-const colorBody=document.getElementById('colorBody');
-const colorAccent=document.getElementById('colorAccent');
-const baseAngle=document.getElementById('baseAngle');
-const headYaw=document.getElementById('headYaw');
-const headPitch=document.getElementById('headPitch');
-const flapAmp=document.getElementById('flapAmp');
-const speed=document.getElementById('speed');
-const toggleWaddle=document.getElementById('toggleWaddle');
-const toggleFlap=document.getElementById('toggleFlap');
-const ka=document.getElementById('ka');
-const kd=document.getElementById('kd');
-const ks=document.getElementById('ks');
-const shininess=document.getElementById('shininess');
-const ambColor=document.getElementById('ambColor');
-const difColor=document.getElementById('difColor');
-const speColor=document.getElementById('speColor');
-const lx=document.getElementById('lx');
-const ly=document.getElementById('ly');
-const lz=document.getElementById('lz');
-const maxBounces=document.getElementById('maxBounces');
-const rtIntensity=document.getElementById('rtIntensity');
+        const ambientStrengthSlider = document.getElementById('ambientStrength');
+        const ambientValue = document.getElementById('ambientValue');
+        ambientStrengthSlider.addEventListener('input', function() {
+            ambientStrength = parseFloat(this.value);
+            ambientValue.textContent = ambientStrength.toFixed(2);
+        });
 
-// Update value displays
-function updateValueDisplays() {
-  document.getElementById('kaVal').textContent = ka.value;
-  document.getElementById('kdVal').textContent = kd.value;
-  document.getElementById('ksVal').textContent = ks.value;
-  document.getElementById('shinVal').textContent = shininess.value;
-  document.getElementById('lxVal').textContent = lx.value;
-  document.getElementById('lyVal').textContent = ly.value;
-  document.getElementById('lzVal').textContent = lz.value;
-  document.getElementById('bouncesVal').textContent = maxBounces.value;
-  document.getElementById('rtIntVal').textContent = rtIntensity.value;
-}
+        const shininessSlider = document.getElementById('shininess');
+        const shininessValue = document.getElementById('shininessValue');
+        shininessSlider.addEventListener('input', function() {
+            shininess = parseFloat(this.value);
+            shininessValue.textContent = shininess;
+        });
 
-ka.oninput = kd.oninput = ks.oninput = shininess.oninput = updateValueDisplays;
-lx.oninput = ly.oninput = lz.oninput = updateValueDisplays;
-maxBounces.oninput = rtIntensity.oninput = updateValueDisplays;
-updateValueDisplays();
+        const light1Slider = document.getElementById('light1Intensity');
+        const light1Value = document.getElementById('light1Value');
+        light1Slider.addEventListener('input', function() {
+            light1Intensity = parseFloat(this.value);
+            light1Value.textContent = light1Intensity.toFixed(1);
+        });
 
-function refreshSelect(){
-  selActor.innerHTML='';
-  actors.forEach((r,i)=>{
-    const opt=document.createElement('option');
-    opt.value=i; opt.textContent=`Pingüino ${i+1}`;
-    selActor.appendChild(opt);
-  });
-}
+        const light2Slider = document.getElementById('light2Intensity');
+        const light2Value = document.getElementById('light2Value');
+        light2Slider.addEventListener('input', function() {
+            light2Intensity = parseFloat(this.value);
+            light2Value.textContent = light2Intensity.toFixed(1);
+        });
 
-btnAdd.onclick=()=>{
-  const p=new Penguin();
-  const n=actors.length, col=n%6, row=Math.floor(n/6);
-  p.position.x=(col-2.5)*2.2;
-  p.position.z=(row)*-2.6;
-  actors.push(p);
-  refreshSelect();
-  selActor.value=String(actors.length-1);
-};
+        const animSpeedSlider = document.getElementById('animSpeed');
+        const speedValue = document.getElementById('speedValue');
+        animSpeedSlider.addEventListener('input', function() {
+            animSpeed = parseFloat(this.value);
+            speedValue.textContent = animSpeed.toFixed(1);
+        });
 
-btnRemove.onclick=()=>{
-  const i=Number(selActor.value||0);
-  if(actors.length>0){
-    actors.splice(i,1);
-    refreshSelect();
-    selActor.value='0';
-  }
-};
+        // Render loop
+        let startTime = Date.now();
+        function render() {
+            const time = ((Date.now() - startTime) / 1000.0) * animSpeed;
 
-baseAngle.oninput=headYaw.oninput=headPitch.oninput=flapAmp.oninput=()=>{
-  const i=Number(selActor.value||0); const p=actors[i]; if(!p) return;
-  p.baseAngle=Number(baseAngle.value)*Math.PI/180;
-  p.headYaw  =Number(headYaw.value)*Math.PI/180;
-  p.headPitch=Number(headPitch.value)*Math.PI/180;
-  p.flapAmp  =Number(flapAmp.value)*Math.PI/180;
-};
+            updateCameraFromKeys();
 
-// Iniciar con un pingüino
-btnAdd.click();
+            gl.viewport(0, 0, canvas.width, canvas.height);
+            gl.clearColor(0, 0, 0, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT);
 
-// ============ RENDER LOOP ============
-let t0 = performance.now();
-function render(){
-  const t = performance.now();
-  const dt=(t-t0)*0.001;
-  t0=t;
+            gl.useProgram(program);
+            gl.bindVertexArray(vao);
 
-  gl.viewport(0,0,canvas.width,canvas.height);
-  gl.clearColor(0.05, 0.08, 0.12, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+            gl.uniform1f(timeLocation, time);
+            gl.uniform1i(maxBouncesLocation, maxBounces);
+            gl.uniform1f(ambientStrengthLocation, ambientStrength);
+            gl.uniform1f(shininessLocation, shininess);
+            gl.uniform1f(light1IntensityLocation, light1Intensity);
+            gl.uniform1f(light2IntensityLocation, light2Intensity);
+            gl.uniform2f(mouseLocation, mouseX + camPosX, mouseY + camPosY);
 
-  const view = buildView();
-  window._currentView = view;
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-  const lightPosWorld=[Number(lx.value),Number(ly.value),Number(lz.value)];
-  const lightPosView = multiplyMat4Vec3(view, lightPosWorld);
+            requestAnimationFrame(render);
+        }
 
-  // ============ PASO 1: RAY TRACING (fondo) ============
-  gl.useProgram(programRT);
-  gl.disable(gl.DEPTH_TEST);
-
-  gl.uniform1f(uTimeRT, t*0.001);
-  gl.uniform2f(uResRT, canvas.width, canvas.height);
-  gl.uniformMatrix4fv(uViewRT, false, view);
-  gl.uniformMatrix4fv(uProjRT, false, proj);
-  gl.uniform1i(uBouncesRT, Number(maxBounces.value));
-  gl.uniform3fv(uLightPosRT, new Float32Array(lightPosWorld));
-  gl.uniform1f(uRTInt, Number(rtIntensity.value));
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
-  gl.enableVertexAttribArray(aPosRT);
-  gl.vertexAttribPointer(aPosRT, 2, gl.FLOAT, false, 0, 0);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-  // ============ PASO 2: PINGÜINOS (encima) ============
-  gl.enable(gl.DEPTH_TEST);
-  gl.useProgram(program);
-
-  gl.uniformMatrix4fv(uPM,false,proj);
-  gl.uniformMatrix4fv(uMVM,false,view);
-  gl.uniform3fv(uLightPosView,new Float32Array(lightPosView));
-  gl.uniform3fv(uViewPosView,new Float32Array([0,0,0]));
-  gl.uniform1f(uKa, Number(ka.value));
-  gl.uniform1f(uKd, Number(kd.value));
-  gl.uniform1f(uKs, Number(ks.value));
-  gl.uniform1f(uShininess, Number(shininess.value));
-  gl.uniform3fv(uAmbientColor, new Float32Array(hexToRGB3(ambColor.value)));
-  gl.uniform3fv(uDiffuseColor, new Float32Array(hexToRGB3(difColor.value)));
-  gl.uniform3fv(uSpecularColor,new Float32Array(hexToRGB3(speColor.value)));
-
-  const sp = Number(speed.value || 1.0);
-  const world = mat4Identity();
-
-  for(const p of actors){
-    if(sp>0){
-      if(toggleWaddle?.checked) p.baseAngle += Math.sin(t*0.002)*0.0025*sp;
-      if(toggleFlap?.checked)   p.flapPhase = (p.flapPhase||0)+dt*2.0*sp;
-    }
-    const effAmp=Math.min(p.flapAmp,12*Math.PI/180);
-    const flap=Math.sin(p.flapPhase||0)*effAmp;
-
-    let LwingL=mat4Translate(mat4Identity(),[-0.58,1.30,0]);
-    LwingL=mat4RotateY(LwingL,0.12);
-    LwingL=mat4RotateZ(LwingL, Math.PI*0.5+flap);
-    p.nWingL.local=LwingL;
-
-    let LwingR=mat4Translate(mat4Identity(),[ 0.58,1.30,0]);
-    LwingR=mat4RotateY(LwingR,-0.12);
-    LwingR=mat4RotateZ(LwingR,-Math.PI*0.5-flap);
-    p.nWingR.local=LwingR;
-
-    const step=Math.sin((p.flapPhase||0)*0.8)*0.10;
-    let LfootL=mat4Translate(mat4Identity(),[-0.28,0.32,0.18]);
-    LfootL=mat4RotateX(LfootL, step);
-    p.nFootL.local=LfootL;
-
-    let LfootR=mat4Translate(mat4Identity(),[ 0.28,0.32,0.18]);
-    LfootR=mat4RotateX(LfootR,-step);
-    p.nFootR.local=LfootR;
-
-    p.draw(world);
-  }
-
-  requestAnimationFrame(render);
-}
-requestAnimationFrame(render);
+        requestAnimationFrame(render);
+    })();
 </script>
+
 </body>
 </html>
