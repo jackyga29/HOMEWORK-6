@@ -136,13 +136,22 @@
         </label>
 
         <div class="section-divider"></div>
+        <h3>🏖️ Floor Texture</h3>
+
+        <label>
+            Sand Texture Scale
+            <span class="value-display" id="textureScaleValue">0.5</span>
+            <input type="range" id="textureScale" min="0.1" max="2.0" value="0.5" step="0.1">
+        </label>
+
+        <div class="section-divider"></div>
         <small>
             <strong>Scene Objects:</strong><br>
             • 3 Bubbles (refractive)<br>
             • 2 Pearls (reflective)<br>
             • 1 Crystal cube (diffuse)<br>
             • 2 Light sources<br>
-            • Sandy ocean floor
+            • Sandy ocean floor w/ texture
         </small>
     </div>
 </div>
@@ -166,6 +175,8 @@
     uniform float u_light1Intensity;
     uniform float u_light2Intensity;
     uniform vec2 u_mouse;
+    uniform sampler2D u_sandTexture;
+    uniform float u_textureScale;
 
     out vec4 fragColor;
 
@@ -388,15 +399,14 @@
                 closest.point = ray.origin + ray.direction * planeT;
                 closest.normal = planeNormal;
 
-                // Patrón de arena con textura ondulada
-                vec2 sandPos = closest.point.xz * 3.0;
-                float pattern = sin(sandPos.x * 2.0) * cos(sandPos.y * 2.0) * 0.1;
-                float checker = mod(floor(sandPos.x) + floor(sandPos.y), 2.0) * 0.05;
+                // Usar textura de arena con coordenadas UV
+                vec2 uv = closest.point.xz * u_textureScale;
+                vec3 sandTexture = texture(u_sandTexture, uv).rgb;
 
-                vec3 sandColor1 = vec3(0.76, 0.70, 0.50); // Arena clara
-                vec3 sandColor2 = vec3(0.65, 0.60, 0.45); // Arena oscura
+                // Agregar variación procedural sutil para más realismo
+                float noise = sin(uv.x * 12.0) * cos(uv.y * 12.0) * 0.08;
 
-                closest.color = mix(sandColor1, sandColor2, pattern + checker);
+                closest.color = sandTexture + vec3(noise);
                 closest.material = MATERIAL_DIFFUSE;
                 closest.reflectivity = 0.1;
                 closest.refractiveIndex = 1.0;
@@ -651,6 +661,8 @@
         const light1IntensityLocation = gl.getUniformLocation(program, 'u_light1Intensity');
         const light2IntensityLocation = gl.getUniformLocation(program, 'u_light2Intensity');
         const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
+        const sandTextureLocation = gl.getUniformLocation(program, 'u_sandTexture');
+        const textureScaleLocation = gl.getUniformLocation(program, 'u_textureScale');
 
         // Crear geometría de pantalla completa
         const positions = new Float32Array([
@@ -670,6 +682,67 @@
         gl.enableVertexAttribArray(positionLocation);
         gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
+        // Crear textura de arena proceduralmente
+        function createSandTexture() {
+            const size = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Crear patrón de arena realista con ruido
+            const imageData = ctx.createImageData(size, size);
+            const data = imageData.data;
+
+            // Función de ruido simple (perlin-like)
+            function noise(x, y) {
+                const n = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+                return n - Math.floor(n);
+            }
+
+            for (let y = 0; y < size; y++) {
+                for (let x = 0; x < size; x++) {
+                    const i = (y * size + x) * 4;
+
+                    // Múltiples octavas de ruido para textura detallada
+                    let value = 0;
+                    value += noise(x * 0.05, y * 0.05) * 0.5;
+                    value += noise(x * 0.1, y * 0.1) * 0.25;
+                    value += noise(x * 0.2, y * 0.2) * 0.125;
+                    value += noise(x * 0.4, y * 0.4) * 0.0625;
+
+                    // Colores de arena (beige/marrón claro)
+                    const baseR = 194;
+                    const baseG = 178;
+                    const baseB = 128;
+
+                    const variation = (value - 0.5) * 60;
+
+                    data[i] = Math.max(0, Math.min(255, baseR + variation));
+                    data[i + 1] = Math.max(0, Math.min(255, baseG + variation));
+                    data[i + 2] = Math.max(0, Math.min(255, baseB + variation));
+                    data[i + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        // Crear y configurar textura WebGL
+        const sandTexture = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, sandTexture);
+
+        const sandCanvas = createSandTexture();
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sandCanvas);
+
+        // Configurar parámetros de textura para repetición
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
         // Variables de control
         let maxBounces = 5;
         let ambientStrength = 0.15;
@@ -677,6 +750,7 @@
         let light1Intensity = 1.5;
         let light2Intensity = 0.7;
         let animSpeed = 1.0;
+        let textureScale = 0.5;
 
         // Mouse tracking
         let mouseX = 0.0;
@@ -754,6 +828,13 @@
             speedValue.textContent = animSpeed.toFixed(1);
         });
 
+        const textureScaleSlider = document.getElementById('textureScale');
+        const textureScaleValue = document.getElementById('textureScaleValue');
+        textureScaleSlider.addEventListener('input', function() {
+            textureScale = parseFloat(this.value);
+            textureScaleValue.textContent = textureScale.toFixed(1);
+        });
+
         // Render loop
         let startTime = Date.now();
         function render() {
@@ -776,6 +857,12 @@
             gl.uniform1f(light1IntensityLocation, light1Intensity);
             gl.uniform1f(light2IntensityLocation, light2Intensity);
             gl.uniform2f(mouseLocation, mouseX + camPosX, mouseY + camPosY);
+            gl.uniform1f(textureScaleLocation, textureScale);
+
+            // Bind sand texture to texture unit 0
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, sandTexture);
+            gl.uniform1i(sandTextureLocation, 0);
 
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
